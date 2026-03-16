@@ -32,8 +32,31 @@ import { getSafeRedirectPath } from "@/src/utils/redirect";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import useLocalStorage from "@/src/components/useLocalStorage";
 
-// Use the same getServerSideProps function as src/pages/auth/sign-in.tsx
-export { getServerSideProps } from "@/src/pages/auth/sign-in";
+import { type GetServerSidePropsContext } from "next";
+import { prisma } from "@langfuse/shared/src/db";
+import { getServerSideProps as getSignInServerSideProps } from "@/src/pages/auth/sign-in";
+
+export const getServerSideProps = async (context: GetServerSidePropsContext) => {
+  const result = await getSignInServerSideProps(context);
+  if (!("props" in result)) return result;
+
+  const props = result.props as PageProps;
+
+  // If signup is globally disabled, check if the email query param has a pending invite.
+  // Invited users must be allowed through even when AUTH_DISABLE_SIGNUP=true.
+  const emailParam = context.query.email as string | undefined;
+  if (props.signUpDisabled && emailParam) {
+    const invitation = await prisma.membershipInvitation.findFirst({
+      where: { email: emailParam.toLowerCase() },
+      select: { id: true },
+    });
+    if (invitation) {
+      return { props: { ...props, signUpDisabled: false } };
+    }
+  }
+
+  return result;
+};
 
 type NextAuthProvider = NonNullable<Parameters<typeof signIn>[0]>;
 

@@ -3,6 +3,7 @@ import Header from "@/src/components/layouts/header";
 import { Card } from "@/src/components/ui/card";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
+import { PasswordInput } from "@/src/components/ui/password-input";
 import { api } from "@/src/utils/api";
 import * as z from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,7 +33,7 @@ import { StringNoHTML } from "@langfuse/shared";
 import Link from "next/link";
 import { showSuccessToast } from "@/src/features/notifications/showSuccessToast";
 import { showErrorToast } from "@/src/features/notifications/showErrorToast";
-import { env } from "@/src/env.mjs";
+import { passwordSchema } from "@/src/features/auth/lib/signupSchema";
 
 const displayNameSchema = z.object({
   name: StringNoHTML.min(1, "Name cannot be empty").max(
@@ -113,6 +114,95 @@ function UpdateDisplayName() {
               className="mt-4"
             >
               Save
+            </Button>
+          </form>
+        </Form>
+      </Card>
+    </div>
+  );
+}
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: passwordSchema,
+});
+
+function UpdatePassword() {
+  const { data: passwordData } = api.credentials.hasPassword.useQuery();
+
+  if (passwordData !== undefined && !passwordData.hasPassword) return null;
+
+  const form = useForm({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+    },
+  });
+
+  const changePassword = api.credentials.changePassword.useMutation({
+    onSuccess: () => {
+      form.reset();
+      showSuccessToast({
+        title: "Password Updated",
+        description: "Your password has been successfully changed.",
+      });
+    },
+    onError: (error) =>
+      form.setError("currentPassword", { message: error.message }),
+  });
+
+  function onSubmit(values: z.infer<typeof changePasswordSchema>) {
+    changePassword.mutate({
+      currentPassword: values.currentPassword,
+      newPassword: values.newPassword,
+    });
+  }
+
+  return (
+    <div>
+      <Header title="Password" />
+      <Card className="p-3">
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex flex-col gap-4"
+          >
+            <FormField
+              control={form.control}
+              name="currentPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <PasswordInput placeholder="Current password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="newPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <PasswordInput placeholder="New password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button
+              variant="secondary"
+              type="submit"
+              loading={changePassword.isPending}
+              disabled={
+                form.getValues().currentPassword === "" ||
+                form.getValues().newPassword === ""
+              }
+              className="w-fit"
+            >
+              Change Password
             </Button>
           </form>
         </Form>
@@ -278,23 +368,7 @@ const getAccountSettingsPages = (userEmail: string): AccountSettingsPage[] => [
           </Card>
         </div>
         <UpdateDisplayName />
-        <div>
-          <Header title="Password" />
-          <Card className="p-3">
-            <p className="text-primary mb-4 text-sm">
-              To change your password, we will send you a secure link to your
-              email address. Click the button below to start the password reset
-              process.
-            </p>
-            <Button asChild variant="secondary">
-              <Link
-                href={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/auth/reset-password`}
-              >
-                Change Password
-              </Link>
-            </Button>
-          </Card>
-        </div>
+        <UpdatePassword />
         <SettingsDangerZone
           items={[
             {

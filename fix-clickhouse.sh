@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Clear migration state (TRUNCATE is synchronous; langfuse re-runs migrations safely via IF NOT EXISTS)
-docker exec langfuse-clickhouse-1 clickhouse-client --query "TRUNCATE TABLE IF EXISTS default.schema_migrations" 2>/dev/null
+# Fix dirty migrations: insert clean replacement rows with high sequence so they win deduplication
+docker exec langfuse-clickhouse-1 clickhouse-client --query "INSERT INTO default.schema_migrations SELECT version, 0, 9000000000000000000 FROM default.schema_migrations WHERE dirty = 1" 2>/dev/null
+docker exec langfuse-clickhouse-1 clickhouse-client --query "OPTIMIZE TABLE default.schema_migrations FINAL" 2>/dev/null
 
 # Switch any tables still on default policy to tiered (S3)
 for table in traces observations scores event_log blob_storage_file_log dataset_run_items dataset_run_items_rmt project_environments schema_migrations; do

@@ -4,8 +4,23 @@
 # All other components are bound to localhost (127.0.0.1) to only accept connections from the local machine.
 # External connections from other machines will not be able to reach these services directly.
 services:
+  clickhouse-migration-fix:
+    image: docker.io/clickhouse/clickhouse-server
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        clickhouse-client --host clickhouse --port 9000 --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "ALTER TABLE IF EXISTS default.schema_migrations DELETE WHERE dirty = 1"
+        clickhouse-client --host clickhouse --port 9000 --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "OPTIMIZE TABLE IF EXISTS default.schema_migrations FINAL"
+    restart: "no"
+
   langfuse-worker:
-    image: docker.io/langfuse/langfuse-worker:3
+    image: ghcr.io/kabakoo-app/langfuse-worker:master
     restart: always
     depends_on: &langfuse-depends-on
       postgres:
@@ -67,9 +82,12 @@ services:
       SMTP_CONNECTION_URL: ${SMTP_CONNECTION_URL:-}
 
   langfuse-web:
-    image: docker.io/langfuse/langfuse:3
+    image: ghcr.io/kabakoo-app/langfuse-web:master
     restart: always
-    depends_on: *langfuse-depends-on
+    depends_on:
+      <<: *langfuse-depends-on
+      clickhouse-migration-fix:
+        condition: service_completed_successfully
     ports:
       - 3000:3000
     environment:
@@ -96,6 +114,8 @@ services:
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - ./clickhouse-config/s3_storage.xml:/etc/clickhouse-server/config.d/s3_storage.xml:ro
+      - ./clickhouse-config/disable_logs.xml:/etc/clickhouse-server/config.d/disable_logs.xml:ro
     ports:
       - 127.0.0.1:8123:8123
       - 127.0.0.1:9000:9000

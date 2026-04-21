@@ -1,0 +1,31 @@
+<clickhouse>
+    <storage_configuration>
+        <disks>
+            <s3>
+                <type>s3</type>
+                <endpoint>https://kbk-langfuse-clickhouse.s3.us-east-2.amazonaws.com/</endpoint>
+                <use_environment_credentials>true</use_environment_credentials>
+            </s3>
+        </disks>
+        <policies>
+            <tiered>
+                <volumes>
+                    <default>
+                        <disk>default</disk>
+                    </default>
+                    <s3_vol>
+                        <disk>s3</disk>
+                    </s3_vol>
+                </volumes>
+                <move_factor>1.0</move_factor>
+            </tiered>
+            <s3_main>
+                <volumes>
+                    <main>
+                        <disk>s3</disk>
+                    </main>
+                </volumes>
+            </s3_main>
+        </policies>
+    </storage_configuration>
+</clickhouse>

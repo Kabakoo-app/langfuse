@@ -1,17 +1,12 @@
 <clickhouse>
-    <query_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </query_log>
-    <trace_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </trace_log>
-    <metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </metric_log>
-    <asynchronous_metric_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </asynchronous_metric_log>
-    <text_log>
-        <ttl>event_date + INTERVAL 7 DAY</ttl>
-    </text_log>
+    <query_log remove="1"/>
+    <trace_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <text_log remove="1"/>
+    <part_log remove="1"/>
+    <session_log remove="1"/>
+    <crash_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <query_views_log remove="1"/>
 </clickhouse>

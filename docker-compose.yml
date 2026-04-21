@@ -1,8 +1,5 @@
-# Make sure to update the credential placeholders with your own secrets.
-# We mark them with # CHANGEME in the file below.
-# In addition, we recommend to restrict inbound traffic on the host to langfuse-web (port 3000) and minio (port 9090) only.
-# All other components are bound to localhost (127.0.0.1) to only accept connections from the local machine.
-# External connections from other machines will not be able to reach these services directly.
+# Server deployment compose file.
+# Uses AWS RDS for postgres and AWS S3 for storage - no local postgres or minio needed.
 services:
   clickhouse-migration-fix:
     image: docker.io/clickhouse/clickhouse-server
@@ -23,10 +20,6 @@ services:
     image: ghcr.io/kabakoo-app/langfuse-worker:master
     restart: always
     depends_on: &langfuse-depends-on
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
       redis:
         condition: service_healthy
       clickhouse:
@@ -128,31 +121,9 @@ services:
       retries: 10
       start_period: 1s
 
-  minio:
-    image: cgr.dev/chainguard/minio
-    restart: always
-    entrypoint: sh
-    # create the 'langfuse' bucket before starting the service
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-miniosecret} # CHANGEME
-    ports:
-      - 9090:9000
-      - 127.0.0.1:9091:9001
-    volumes:
-      - langfuse_minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 1s
-      timeout: 5s
-      retries: 5
-      start_period: 1s
-
   redis:
     image: docker.io/redis:7
     restart: always
-    # CHANGEME: row below to secure redis password
     command: >
       --requirepass ${REDIS_AUTH:-myredissecret}
       --maxmemory-policy noeviction
@@ -166,33 +137,10 @@ services:
       timeout: 10s
       retries: 10
 
-  postgres:
-    image: docker.io/postgres:${POSTGRES_VERSION:-17}
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres} # CHANGEME
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
-      TZ: UTC
-      PGTZ: UTC
-    ports:
-      - 127.0.0.1:5432:5432
-    volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data
-
 volumes:
-  langfuse_postgres_data:
-    driver: local
   langfuse_clickhouse_data:
     driver: local
   langfuse_clickhouse_logs:
-    driver: local
-  langfuse_minio_data:
     driver: local
   langfuse_redis_data:
     driver: local

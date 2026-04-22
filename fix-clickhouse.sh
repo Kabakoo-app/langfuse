@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Fix dirty migrations: insert clean replacement rows with high sequence so they win deduplication
+# Pre-populate all known migrations as clean so new images don't re-run them
+docker exec langfuse-clickhouse-1 clickhouse-client --query "INSERT INTO default.schema_migrations SELECT number + 1, 0, 9000000000000000000 FROM numbers(34)" 2>/dev/null
+# Fix any remaining dirty migrations
 docker exec langfuse-clickhouse-1 clickhouse-client --query "INSERT INTO default.schema_migrations SELECT version, 0, 9000000000000000000 FROM default.schema_migrations WHERE dirty = 1" 2>/dev/null
 docker exec langfuse-clickhouse-1 clickhouse-client --query "OPTIMIZE TABLE default.schema_migrations FINAL" 2>/dev/null
 

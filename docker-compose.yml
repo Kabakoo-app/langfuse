@@ -12,6 +12,7 @@ services:
     entrypoint: ["bash", "-c"]
     command:
       - |
+        clickhouse-client --host clickhouse --port 9000 --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "INSERT INTO default.schema_migrations SELECT number + 1, 0, 9000000000000000000 FROM numbers(34)"
         clickhouse-client --host clickhouse --port 9000 --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "INSERT INTO default.schema_migrations SELECT version, 0, 9000000000000000000 FROM default.schema_migrations WHERE dirty = 1"
         clickhouse-client --host clickhouse --port 9000 --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "OPTIMIZE TABLE default.schema_migrations FINAL"
     restart: "no"

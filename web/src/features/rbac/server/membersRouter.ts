@@ -284,48 +284,61 @@ export const membersRouter = createTRPCRouter({
           currentUsage: currentMemberCount + pendingInviteCount,
         });
 
-        // create org membership as user is not a member yet
-        const orgMembership = await ctx.prisma.organizationMembership.create({
-          data: {
-            userId: user.id,
-            orgId: input.orgId,
-            role: input.orgRole,
-          },
-        });
-        await auditLog({
-          session: ctx.session,
-          resourceType: "orgMembership",
-          resourceId: orgMembership.id,
-          action: "create",
-          after: orgMembership,
-        });
-        if (project && input.projectRole && input.projectRole !== Role.NONE) {
-          const projectMembership = await ctx.prisma.projectMembership.create({
+        // Create a MembershipInvitation so the user appears in the Invites tab
+        // (and the copy-link button is available). The invitation is processed
+        // automatically the next time the user signs in.
+        try {
+          const invitation = await ctx.prisma.membershipInvitation.create({
             data: {
-              userId: user.id,
-              projectId: project.id,
-              role: input.projectRole,
-              orgMembershipId: orgMembership.id,
+              orgId: input.orgId,
+              projectId:
+                project && input.projectRole && input.projectRole !== Role.NONE
+                  ? project.id
+                  : null,
+              email: input.email.toLowerCase(),
+              orgRole: input.orgRole,
+              projectRole:
+                input.projectRole &&
+                input.projectRole !== Role.NONE &&
+                project
+                  ? input.projectRole
+                  : null,
+              invitedByUserId: ctx.session.user.id,
             },
           });
+
           await auditLog({
             session: ctx.session,
-            resourceType: "projectMembership",
-            resourceId:
-              projectMembership.projectId + "--" + projectMembership.userId,
+            resourceType: "membershipInvitation",
+            resourceId: invitation.id,
             action: "create",
-            after: projectMembership,
+            after: invitation,
           });
+          await sendMembershipInvitationEmail({
+            inviterEmail: ctx.session.user.email!,
+            inviterName: ctx.session.user.name!,
+            to: input.email,
+            orgName: org.name,
+            orgId: input.orgId,
+            userExists: true,
+            env: env,
+          });
+
+          return invitation;
+        } catch (error) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "A pending membership invitation with this email and organization already exists",
+            });
+          } else {
+            throw error;
+          }
         }
-        await sendMembershipInvitationEmail({
-          inviterEmail: ctx.session.user.email!,
-          inviterName: ctx.session.user.name!,
-          to: input.email,
-          orgName: org.name,
-          orgId: input.orgId,
-          userExists: true,
-          env: env,
-        });
       } else {
         // Check member limit before creating invitation
         throwIfExceedsLimit({

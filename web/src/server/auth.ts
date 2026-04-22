@@ -143,6 +143,12 @@ const staticProviders: Provider[] = [
       );
       if (!isValidPassword) throw new Error("Invalid credentials");
 
+      // Process any pending membership invitations for existing credential users
+      await createProjectMembershipsOnSignup({
+        id: dbUser.id,
+        email: dbUser.email,
+      });
+
       const userObj: User = {
         id: dbUser.id,
         name: dbUser.name,

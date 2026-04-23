@@ -475,6 +475,55 @@ export const membersRouter = createTRPCRouter({
         },
       });
     }),
+  deleteUser: protectedOrganizationProcedure
+    .input(
+      z.object({
+        orgId: z.string(),
+        userId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      throwIfNoOrganizationAccess({
+        session: ctx.session,
+        organizationId: input.orgId,
+        scope: "organizationMembers:CUD",
+      });
+
+      if (input.userId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot delete your own account from here.",
+        });
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: input.userId },
+        include: {
+          organizationMemberships: {
+            where: { orgId: input.orgId },
+          },
+        },
+      });
+      if (!user) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const membership = user.organizationMemberships[0];
+      if (membership) {
+        throwIfHigherRole({
+          ownRole: ctx.session.orgRole,
+          role: membership.role,
+        });
+      }
+
+      await auditLog({
+        session: ctx.session,
+        resourceType: "orgMembership",
+        resourceId: input.userId,
+        action: "delete",
+        before: user,
+      });
+
+      await ctx.prisma.user.delete({ where: { id: input.userId } });
+    }),
   deleteInvite: protectedOrganizationProcedure
     .input(
       z.object({

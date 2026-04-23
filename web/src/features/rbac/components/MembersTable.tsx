@@ -12,6 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/src/components/ui/alert-dialog";
 import useColumnVisibility from "@/src/features/column-visibility/hooks/useColumnVisibility";
 import { CreateProjectMemberButton } from "@/src/features/rbac/components/CreateProjectMemberButton";
 import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
@@ -19,7 +30,7 @@ import { api } from "@/src/utils/api";
 import { safeExtract } from "@/src/utils/map-utils";
 import type { RouterOutput } from "@/src/utils/types";
 import { Role } from "@langfuse/shared";
-import { Trash } from "lucide-react";
+import { Trash, UserX } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Alert, AlertDescription, AlertTitle } from "@/src/components/ui/alert";
 import { useHasEntitlement } from "@/src/features/entitlements/hooks";
@@ -131,6 +142,12 @@ export function MembersTable({
   const mutDeleteMember = api.members.deleteMembership.useMutation({
     onSuccess: (data) => {
       if (data.userId === session.data?.user?.id) void session.update();
+      utils.members.invalidate();
+    },
+  });
+
+  const mutDeleteUser = api.members.deleteUser.useMutation({
+    onSuccess: () => {
       utils.members.invalidate();
     },
   });
@@ -309,14 +326,17 @@ export function MembersTable({
         const { orgMembershipId, userId } = row.getValue(
           "meta",
         ) as MembersTableRow["meta"];
-        return hasCudAccessOrgLevel ||
-          (userId && userId === session.data?.user?.id) ? (
-          <div className="flex space-x-2">
+        const email = row.getValue("email") as string | null;
+        const isSelf = userId === session.data?.user?.id;
+        if (!hasCudAccessOrgLevel && !isSelf) return null;
+        return (
+          <div className="flex items-center space-x-2">
             <button
+              title={isSelf ? "Leave organization" : "Remove from organization"}
               onClick={() => {
                 if (
                   confirm(
-                    userId === session.data?.user?.id
+                    isSelf
                       ? "Are you sure you want to leave the organization?"
                       : "Are you sure you want to remove this member from the organization?",
                   )
@@ -327,8 +347,42 @@ export function MembersTable({
             >
               <Trash size={14} />
             </button>
+            {hasCudAccessOrgLevel && !isSelf && !project && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    title="Permanently delete user account"
+                    className="text-destructive hover:text-destructive/80"
+                  >
+                    <UserX size={14} />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete user account</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete{" "}
+                      <strong>{email ?? userId}</strong>&apos;s account and
+                      revoke all access. Their sessions, API keys, and all
+                      associated data will be removed. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() =>
+                        mutDeleteUser.mutate({ orgId, userId })
+                      }
+                    >
+                      Delete user
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
-        ) : null;
+        );
       },
     },
   ];

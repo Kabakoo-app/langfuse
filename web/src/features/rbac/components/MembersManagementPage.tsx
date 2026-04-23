@@ -1,4 +1,5 @@
 import { DataTable } from "@/src/components/table/data-table";
+import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
 import { type LangfuseColumnDef } from "@/src/components/table/types";
 import {
   Avatar,
@@ -22,8 +23,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
+import useColumnVisibility from "@/src/features/column-visibility/hooks/useColumnVisibility";
+import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
 import { MembershipInvitesPage } from "@/src/features/rbac/components/MembershipInvitesPage";
+import { CreateProjectMemberButton } from "@/src/features/rbac/components/CreateProjectMemberButton";
 import { RoleSelectItem } from "@/src/features/rbac/components/RoleSelectItem";
 import { showSuccessToast } from "@/src/features/notifications/showSuccessToast";
 import { api } from "@/src/utils/api";
@@ -166,6 +169,8 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
       accessorKey: "createdAt",
       id: "createdAt",
       header: "Joined",
+      enableHiding: true,
+      defaultHidden: true,
       cell: ({ row }) => {
         const value = row.getValue("createdAt") as Date;
         return value ? new Date(value).toLocaleDateString() : "—";
@@ -235,6 +240,14 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
     },
   ];
 
+  const [columnVisibility, setColumnVisibility] =
+    useColumnVisibility<UserRow>("membersManagementVisibility", columns);
+
+  const [columnOrder, setColumnOrder] = useColumnOrder<UserRow>(
+    "membersManagementOrder",
+    columns,
+  );
+
   const convertToRow = (u: UserFromQuery): UserRow => {
     const membership = u.organizationMemberships.find(
       (m: UserFromQuery["organizationMemberships"][number]) =>
@@ -254,7 +267,15 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <SettingsTableCard>
+      <div>
+        <DataTableToolbar
+          columns={columns}
+          columnVisibility={columnVisibility}
+          setColumnVisibility={setColumnVisibility}
+          columnOrder={columnOrder}
+          setColumnOrder={setColumnOrder}
+          actionButtons={<CreateProjectMemberButton orgId={orgId} />}
+        />
         <DataTable
           tableName="membersManagement"
           columns={columns}
@@ -273,8 +294,13 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
                     data: (usersQuery.data?.users ?? []).map(convertToRow),
                   }
           }
+          columnVisibility={columnVisibility}
+          onColumnVisibilityChange={setColumnVisibility}
+          columnOrder={columnOrder}
+          onColumnOrderChange={setColumnOrder}
+          cellPadding="comfortable"
         />
-      </SettingsTableCard>
+      </div>
       <MembershipInvitesPage orgId={orgId} />
     </div>
   );

@@ -846,4 +846,46 @@ export const membersRouter = createTRPCRouter({
         totalCount,
       };
     }),
+  allUsersAdmin: protectedOrganizationProcedure
+    .input(z.object({ orgId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      throwIfNoOrganizationAccess({
+        session: ctx.session,
+        organizationId: input.orgId,
+        scope: "organizationMembers:CUD",
+      });
+
+      const users = await ctx.prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          createdAt: true,
+          organizationMemberships: {
+            select: {
+              id: true,
+              role: true,
+              orgId: true,
+            },
+          },
+        },
+        orderBy: { email: "asc" },
+      });
+
+      return {
+        users: users.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          image: u.image,
+          createdAt: u.createdAt,
+          organizationMemberships: u.organizationMemberships.map((m) => ({
+            id: m.id,
+            role: m.role,
+            orgId: m.orgId,
+          })),
+        })),
+      };
+    }),
 });

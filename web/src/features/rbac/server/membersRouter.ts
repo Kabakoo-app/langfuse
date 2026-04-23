@@ -868,7 +868,7 @@ export const membersRouter = createTRPCRouter({
               id: true,
               role: true,
               orgId: true,
-              org: { select: { name: true } },
+              organization: { select: { name: true } },
             },
           },
         },
@@ -887,7 +887,7 @@ export const membersRouter = createTRPCRouter({
             id: m.id,
             role: m.role,
             orgId: m.orgId,
-            orgName: m.org.name,
+            orgName: m.organization.name,
           })),
         })),
       };

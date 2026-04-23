@@ -19,8 +19,6 @@ import AIFeatureSwitch from "@/src/features/organizations/components/AIFeatureSw
 import { useIsCloudBillingAvailable } from "@/src/ee/features/billing/utils/isCloudBilling";
 import { env } from "@/src/env.mjs";
 import { OrgAuditLogsSettingsPage } from "@/src/ee/features/audit-log-viewer/OrgAuditLogsSettingsPage";
-import { AdminUsersPage } from "@/src/features/rbac/components/AdminUsersPage";
-import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
 
 type OrganizationSettingsPage = {
   title: string;
@@ -37,11 +35,6 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
   const plan = usePlan();
   const isLangfuseCloud = isCloudPlan(plan) ?? false;
   const isCloudBillingAvailable = useIsCloudBillingAvailable();
-  const showAdminUsers = useHasOrganizationAccess({
-    organizationId: organization?.id,
-    scope: "organizationMembers:CUD",
-  });
-
   if (!organization) return [];
 
   return getOrganizationSettingsPages({
@@ -50,7 +43,6 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
     showOrgApiKeySettings,
     showAuditLogs,
     isLangfuseCloud,
-    showAdminUsers,
   });
 }
 
@@ -60,14 +52,12 @@ export const getOrganizationSettingsPages = ({
   showOrgApiKeySettings,
   showAuditLogs,
   isLangfuseCloud,
-  showAdminUsers,
 }: {
   organization: { id: string; name: string; metadata: Record<string, unknown> };
   showBillingSettings: boolean;
   showOrgApiKeySettings: boolean;
   showAuditLogs: boolean;
   isLangfuseCloud: boolean;
-  showAdminUsers: boolean;
 }): OrganizationSettingsPage[] => [
   {
     title: "General",
@@ -136,13 +126,6 @@ export const getOrganizationSettingsPages = ({
     cmdKKeywords: ["audit", "logs", "history", "changes"],
     content: <OrgAuditLogsSettingsPage orgId={organization.id} />,
     show: showAuditLogs,
-  },
-  {
-    title: "Admin - Users",
-    slug: "admin-users",
-    cmdKKeywords: ["admin", "users", "all users", "delete user", "manage users"],
-    content: <AdminUsersPage orgId={organization.id} />,
-    show: showAdminUsers,
   },
   {
     title: "Billing",

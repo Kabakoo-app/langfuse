@@ -42,17 +42,26 @@ export const getServerSideProps = async (context: GetServerSidePropsContext) => 
 
   const props = result.props as PageProps;
 
-  // If signup is globally disabled, check if the email query param has a pending invite.
-  // Invited users must be allowed through even when AUTH_DISABLE_SIGNUP=true.
-  const emailParam = context.query.email as string | undefined;
-  if (props.signUpDisabled && emailParam) {
-    const invitation = await prisma.membershipInvitation.findFirst({
-      where: { email: emailParam.toLowerCase() },
-      select: { id: true },
-    });
-    if (invitation) {
-      return { props: { ...props, signUpDisabled: false } };
+  if (props.signUpDisabled) {
+    // If signup is globally disabled, allow through only if the email query param
+    // has a pending invitation — this is the path for invited users.
+    const emailParam = context.query.email as string | undefined;
+    if (emailParam) {
+      const invitation = await prisma.membershipInvitation.findFirst({
+        where: { email: emailParam.toLowerCase() },
+        select: { id: true },
+      });
+      if (invitation) {
+        return { props: { ...props, signUpDisabled: false } };
+      }
     }
+    // No valid invitation — redirect to sign-in instead of showing the form
+    return {
+      redirect: {
+        destination: "/auth/sign-in",
+        permanent: false,
+      },
+    };
   }
 
   return result;

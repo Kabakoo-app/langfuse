@@ -200,8 +200,10 @@ export function AdminUsersPage({ orgId }: { orgId: string }) {
     organizationMemberships: u.organizationMemberships,
     meta: {
       userId: u.id,
-      orgMembershipId: u.organizationMemberships.find((m) => m.orgId === orgId)
-        ?.id,
+      orgMembershipId: u.organizationMemberships.find(
+        (m: UserFromQuery["organizationMemberships"][number]) =>
+          m.orgId === orgId,
+      )?.id,
     },
   });
 

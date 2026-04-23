@@ -105,11 +105,13 @@ export function AdminUsersPage({ orgId }: { orgId: string }) {
           return <span className="text-muted-foreground">None</span>;
         return (
           <div className="flex flex-wrap gap-1">
-            {memberships.map((m) => (
-              <Badge key={m.id} variant="outline" className="text-xs">
-                {m.orgName} ({m.role})
-              </Badge>
-            ))}
+            {memberships.map(
+              (m: AdminUserRow["organizationMemberships"][number]) => (
+                <Badge key={m.id} variant="outline" className="text-xs">
+                  {m.orgName} ({m.role})
+                </Badge>
+              ),
+            )}
           </div>
         );
       },

@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import Header from "@/src/components/layouts/header";
+import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
 import { MembershipInvitesPage } from "@/src/features/rbac/components/MembershipInvitesPage";
 import { RoleSelectItem } from "@/src/features/rbac/components/RoleSelectItem";
 import { showSuccessToast } from "@/src/features/notifications/showSuccessToast";
@@ -254,8 +254,7 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Header title="All Users" />
+      <SettingsTableCard>
         <DataTable
           tableName="membersManagement"
           columns={columns}
@@ -275,7 +274,7 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
                   }
           }
         />
-      </div>
+      </SettingsTableCard>
       <MembershipInvitesPage orgId={orgId} />
     </div>
   );

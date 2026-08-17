@@ -371,9 +371,7 @@ export function MembersTable({
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={() =>
-                        mutDeleteUser.mutate({ orgId, userId })
-                      }
+                      onClick={() => mutDeleteUser.mutate({ orgId, userId })}
                     >
                       Delete user
                     </AlertDialogAction>

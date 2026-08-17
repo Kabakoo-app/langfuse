@@ -132,8 +132,6 @@ const changePasswordSchema = z.object({
 function UpdatePassword() {
   const { data: passwordData } = api.credentials.hasPassword.useQuery();
 
-  if (passwordData !== undefined && !passwordData.hasPassword) return null;
-
   const form = useForm({
     resolver: zodResolver(changePasswordSchema),
     defaultValues: {
@@ -160,6 +158,8 @@ function UpdatePassword() {
       newPassword: values.newPassword,
     });
   }
+
+  if (passwordData !== undefined && !passwordData.hasPassword) return null;
 
   return (
     <div>

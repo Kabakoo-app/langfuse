@@ -298,9 +298,7 @@ export const membersRouter = createTRPCRouter({
               email: input.email.toLowerCase(),
               orgRole: input.orgRole,
               projectRole:
-                input.projectRole &&
-                input.projectRole !== Role.NONE &&
-                project
+                input.projectRole && input.projectRole !== Role.NONE && project
                   ? input.projectRole
                   : null,
               invitedByUserId: ctx.session.user.id,

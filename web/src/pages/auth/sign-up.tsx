@@ -39,7 +39,9 @@ import { type GetServerSidePropsContext } from "next";
 import { prisma } from "@langfuse/shared/src/db";
 import { getServerSideProps as getSignInServerSideProps } from "@/src/pages/auth/sign-in";
 
-export const getServerSideProps = async (context: GetServerSidePropsContext) => {
+export const getServerSideProps = async (
+  context: GetServerSidePropsContext,
+) => {
   const result = await getSignInServerSideProps(context);
   if (!("props" in result)) return result;
 

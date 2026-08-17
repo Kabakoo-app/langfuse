@@ -112,6 +112,10 @@ services:
   clickhouse:
     image: docker.io/clickhouse/clickhouse-server:25.12
     restart: always
+    # S3-backed merge-tree parts can take longer than Docker's 10s default to
+    # flush/finish a merge; without this, restarts can SIGKILL mid-write and
+    # leave a broken part behind on S3.
+    stop_grace_period: 180s
     user: "101:101"
     environment:
       CLICKHOUSE_DB: default

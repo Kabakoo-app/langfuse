@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-style-props */
 "use client";
 
 import * as React from "react";
@@ -16,7 +17,7 @@ export interface SliderProps extends React.ComponentPropsWithoutRef<
 }
 
 const Slider = React.forwardRef<
-  React.ElementRef<typeof SliderPrimitive.Root>,
+  React.ComponentRef<typeof SliderPrimitive.Root>,
   SliderProps
 >(
   (

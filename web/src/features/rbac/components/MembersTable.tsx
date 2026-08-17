@@ -41,8 +41,8 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
+  HoverCardPortal,
 } from "@/src/components/ui/hover-card";
-import { HoverCardPortal } from "@radix-ui/react-hover-card";
 import Link from "next/link";
 import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
 import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
@@ -141,7 +141,7 @@ export function MembersTable({
 
   const mutDeleteMember = api.members.deleteMembership.useMutation({
     onSuccess: (data) => {
-      if (data.userId === session.data?.user?.id) void session.update();
+      if (data.userId === session.data?.user?.id) session.update();
       utils.members.invalidate();
     },
   });
@@ -250,7 +250,7 @@ export function MembersTable({
                     side="right"
                   >
                     <p className="text-xs">
-                      The organization-level role can to be edited in the{" "}
+                      The organization-level role can be edited in the{" "}
                       <Link
                         href={`/organization/${orgId}/settings/members`}
                         className="underline"
@@ -371,9 +371,7 @@ export function MembersTable({
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={() =>
-                        mutDeleteUser.mutate({ orgId, userId })
-                      }
+                      onClick={() => mutDeleteUser.mutate({ orgId, userId })}
                     >
                       Delete user
                     </AlertDialogAction>
@@ -539,7 +537,7 @@ const OrgRoleDropdown = ({
   const mut = api.members.updateOrgMembership.useMutation({
     onSuccess: (data) => {
       utils.members.invalidate();
-      if (data.userId === session.data?.user?.id) void session.update();
+      if (data.userId === session.data?.user?.id) session.update();
       showSuccessToast({
         title: "Saved",
         description: "Organization role updated successfully",
@@ -599,7 +597,7 @@ const ProjectRoleDropdown = ({
   const mut = api.members.updateProjectRole.useMutation({
     onSuccess: (data) => {
       utils.members.invalidate();
-      if (data.userId === session.data?.user?.id) void session.update();
+      if (data.userId === session.data?.user?.id) session.update();
       showSuccessToast({
         title: "Saved",
         description: "Project role updated successfully",

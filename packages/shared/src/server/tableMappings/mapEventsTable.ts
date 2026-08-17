@@ -2,19 +2,52 @@
 // The frontend only sends the column names to the backend. This needs to be changed in the future to send column IDs.
 
 import { UiColumnMappings } from "../../tableDefinitions";
+import {
+  eventsTableHasParentObservationSql,
+  eventsTableIsRootObservationSql,
+  eventsTableHasInputSql,
+  eventsTableHasOutputSql,
+  eventsTableTraceNameSql,
+} from "../../eventsTable";
 
 export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
   {
     uiTableName: "Environment",
     uiTableId: "environment",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."environment"',
+    clickhouseSelect: "environment",
+    queryPrefix: "e",
+  },
+  {
+    uiTableName: "API Key",
+    uiTableId: "ingestionApiKey",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: 'e."ingestion_api_key"',
+  },
+  {
+    uiTableName: "SDK Name",
+    uiTableId: "ingestionSdkName",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: 'e."ingestion_sdk_name"',
+  },
+  {
+    uiTableName: "SDK Version",
+    uiTableId: "ingestionSdkVersion",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: 'e."ingestion_sdk_version"',
+  },
+  {
+    uiTableName: "Ingestion Source",
+    uiTableId: "ingestionSource",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: 'e."source"',
   },
   {
     uiTableName: "Type",
     uiTableId: "type",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."type"',
+    clickhouseSelect: "type",
+    queryPrefix: "e",
   },
   {
     uiTableName: "ID",
@@ -26,20 +59,23 @@ export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
     uiTableName: "Name",
     uiTableId: "name",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."name"',
+    clickhouseSelect: "name",
+    queryPrefix: "e",
   },
   {
     uiTableName: "Trace ID",
     uiTableId: "traceId",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."trace_id"',
+    clickhouseSelect: "trace_id",
+    queryPrefix: "e",
   },
 
   {
     uiTableName: "Start Time",
     uiTableId: "startTime",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."start_time"',
+    clickhouseSelect: "start_time",
+    queryPrefix: "e",
   },
   {
     uiTableName: "End Time",
@@ -97,7 +133,8 @@ export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
     uiTableName: "Level",
     uiTableId: "level",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."level"',
+    clickhouseSelect: "level",
+    queryPrefix: "e",
   },
   {
     uiTableName: "Status Message",
@@ -166,7 +203,16 @@ export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
     uiTableName: "Version",
     uiTableId: "version",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."version"',
+    clickhouseSelect: "version",
+    queryPrefix: "e",
+  },
+  {
+    uiTableName: "Release",
+    uiTableId: "release",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: "release",
+    queryPrefix: "e",
+    emptyEqualsNull: true,
   },
   {
     uiTableName: "Prompt Name",
@@ -196,19 +242,21 @@ export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
     uiTableName: "Session ID",
     uiTableId: "sessionId",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."session_id"',
+    clickhouseSelect: "session_id",
+    queryPrefix: "e",
   },
   {
     uiTableName: "Trace Name",
     uiTableId: "traceName",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."trace_name"',
+    clickhouseSelect: eventsTableTraceNameSql,
   },
   {
     uiTableName: "User ID",
     uiTableId: "userId",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."user_id"',
+    clickhouseSelect: "user_id",
+    queryPrefix: "e",
   },
   {
     uiTableName: "Trace Tags",
@@ -226,19 +274,39 @@ export const eventsTableNativeUiColumnDefinitions: UiColumnMappings = [
     uiTableName: "Trace Environment",
     uiTableId: "traceEnvironment",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."environment"',
+    clickhouseSelect: "environment",
+    queryPrefix: "e",
   },
   {
     uiTableName: "Has Parent Observation",
     uiTableId: "hasParentObservation",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: "e.parent_span_id != ''",
+    clickhouseSelect: eventsTableHasParentObservationSql,
+  },
+  {
+    uiTableName: "Is Root Observation",
+    uiTableId: "isRootObservation",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: eventsTableIsRootObservationSql,
+  },
+  {
+    uiTableName: "Has Input",
+    uiTableId: "hasInput",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: eventsTableHasInputSql,
+  },
+  {
+    uiTableName: "Has Output",
+    uiTableId: "hasOutput",
+    clickhouseTableName: "events_proto",
+    clickhouseSelect: eventsTableHasOutputSql,
   },
   {
     uiTableName: "Parent Observation ID",
     uiTableId: "parentObservationId",
     clickhouseTableName: "events_proto",
-    clickhouseSelect: 'e."parent_span_id"',
+    clickhouseSelect: "parent_span_id",
+    queryPrefix: "e",
     emptyEqualsNull: true,
   },
   {
@@ -314,6 +382,12 @@ export const eventsTableUiColumnDefinitions: UiColumnMappings = [
     clickhouseSelect: "s.score_categories",
   },
   {
+    uiTableName: "Scores (boolean)",
+    uiTableId: "score_booleans",
+    clickhouseTableName: "scores",
+    clickhouseSelect: "s.score_booleans",
+  },
+  {
     uiTableName: "Trace Scores (numeric)",
     uiTableId: "trace_scores_avg",
     clickhouseTableName: "scores",
@@ -324,6 +398,12 @@ export const eventsTableUiColumnDefinitions: UiColumnMappings = [
     uiTableId: "trace_score_categories",
     clickhouseTableName: "scores",
     clickhouseSelect: "ts.score_categories",
+  },
+  {
+    uiTableName: "Trace Scores (boolean)",
+    uiTableId: "trace_score_booleans",
+    clickhouseTableName: "scores",
+    clickhouseSelect: "ts.score_booleans",
   },
   {
     uiTableName: "Comment Count",

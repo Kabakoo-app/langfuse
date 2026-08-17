@@ -1,4 +1,3 @@
-import { StarSessionToggle } from "@/src/components/star-toggle";
 import { DataTable } from "@/src/components/table/data-table";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
 import {
@@ -7,7 +6,6 @@ import {
 } from "@/src/components/table/data-table-controls";
 import {
   TableBadgeLoadingCell,
-  TableIconButtonLoadingCell,
   TableTextLoadingCell,
 } from "@/src/components/table/loading-cells";
 import { ResizableFilterLayout } from "@/src/components/table/resizable-filter-layout";
@@ -24,9 +22,9 @@ import {
   SESSION_COLUMN_TO_BACKEND_KEY,
   type SessionOmittableFilterColumn,
 } from "@/src/features/filters/config/sessions-config";
-import { DEFAULT_SIDEBAR_IMPLICIT_ENVIRONMENT_CONFIG } from "@/src/features/filters/constants/internal-environments";
-import { transformFiltersForBackend } from "@/src/features/filters/lib/filter-transform";
+import { buildSidebarFilterSessionContextId } from "@/src/features/filters/lib/persistedSidebarFilterQuery";
 import {
+  DEFAULT_SIDEBAR_IMPLICIT_ENVIRONMENT_CONFIG,
   type FilterState,
   BatchExportTableName,
   TableViewPresetTableName,
@@ -34,7 +32,10 @@ import {
   BatchActionType,
   ActionId,
   type TimeFilter,
+  type ScoreAggregate,
 } from "@langfuse/shared";
+import { transformFiltersForBackend } from "@/src/features/filters/lib/filter-transform";
+import { sortOptionValues } from "@/src/features/filters/lib/option-sort";
 import { useDetailPageLists } from "@/src/features/navigate-detail-pages/context";
 import { useOrderByState } from "@/src/features/orderBy/hooks/useOrderByState";
 import { api } from "@/src/utils/api";
@@ -46,15 +47,15 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { usePaginationState } from "@/src/hooks/usePaginationState";
 import { useTableDateRange } from "@/src/hooks/useTableDateRange";
 import { toAbsoluteTimeRange } from "@/src/utils/date-range-utils";
-import { joinTableCoreAndMetrics } from "@/src/components/table/utils/joinTableCoreAndMetrics";
+import { joinSessionCoreAndMetrics } from "@/src/components/table/use-cases/session-row-data";
 import TagList from "@/src/features/tag/components/TagList";
 import { useRowHeightLocalStorage } from "@/src/components/table/data-table-row-height-switch";
+import { TableHeaderControls } from "@/src/components/table/table-header-controls";
 import { cn } from "@/src/utils/tailwind";
 import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
 import { LocalIsoDate } from "@/src/components/LocalIsoDate";
 import { useTableViewManager } from "@/src/components/table/table-view-presets/hooks/useTableViewManager";
 import { Badge } from "@/src/components/ui/badge";
-import { type ScoreAggregate } from "@langfuse/shared";
 import { useSelectAll } from "@/src/features/table/hooks/useSelectAll";
 import { type TableAction } from "@/src/features/table/types";
 import { TableActionMenu } from "@/src/features/table/components/TableActionMenu";
@@ -68,7 +69,6 @@ import { BatchExportTableButton } from "@/src/components/BatchExportTableButton"
 export type SessionTableRow = {
   id: string;
   createdAt: Date;
-  bookmarked: boolean;
   userIds: string[] | undefined;
   countTraces: number | undefined;
   sessionDuration: number | null | undefined;
@@ -88,6 +88,13 @@ export type SessionTableProps = {
   userId?: string;
   omittedFilter?: SessionOmittableFilterColumn[];
   isBetaEnabled?: boolean;
+  /**
+   * When true, render the time-range picker and auto-refresh button in the
+   * page header (next to the title) via the header controls slot, instead of
+   * inside the table toolbar. Only used when the table is the primary content
+   * of a `Page`.
+   */
+  showControlsInPageHeader?: boolean;
 };
 
 export default function SessionsTable({
@@ -95,10 +102,11 @@ export default function SessionsTable({
   userId,
   omittedFilter = [],
   isBetaEnabled = false,
+  showControlsInPageHeader = false,
 }: SessionTableProps) {
   const sessionsFilterConfig = useMemo(
-    () => getSessionFilterConfig(omittedFilter),
-    [omittedFilter],
+    () => getSessionFilterConfig(omittedFilter, isBetaEnabled),
+    [isBetaEnabled, omittedFilter],
   );
   const { setDetailPageList } = useDetailPageLists();
   const { timeRange, setTimeRange } = useTableDateRange(projectId);
@@ -227,16 +235,17 @@ export default function SessionsTable({
       ) ?? undefined;
 
     const scoresNumeric = filterOptions.data?.scores_avg ?? undefined;
+    const scoresBoolean = filterOptions.data?.score_booleans ?? undefined;
 
     return {
-      bookmarked: ["Bookmarked", "Not bookmarked"],
       environment: environmentOptions,
       userIds:
         filterOptions.data?.userIds.map((u) => ({
           value: u.value,
           count: Number(u.count),
         })) ?? undefined,
-      tags: filterOptions.data?.tags.map((t) => t.value) ?? undefined, // tags don't have counts
+      // tags don't have counts; they read A→Z
+      tags: sortOptionValues(filterOptions.data?.tags.map((t) => t.value)),
       sessionDuration: [],
       countTraces: [],
       inputTokens: [],
@@ -247,6 +256,7 @@ export default function SessionsTable({
       totalCost: [],
       score_categories: scoreCategories,
       scores_avg: scoresNumeric,
+      score_booleans: scoresBoolean,
     };
   }, [environmentOptions, filterOptions.data]);
 
@@ -257,11 +267,15 @@ export default function SessionsTable({
     () => ({
       loading: isSidebarFilterLoading,
       stateLocation: "urlAndSessionStorage",
-      sessionFilterContextId: projectId,
+      sessionFilterContextId: buildSidebarFilterSessionContextId(
+        projectId,
+        userId ? "user" : undefined,
+      ),
       // Sidebar-only implicit environment defaults
       implicitDefaultConfig: DEFAULT_SIDEBAR_IMPLICIT_ENVIRONMENT_CONFIG,
+      isV4: isBetaEnabled,
     }),
-    [isSidebarFilterLoading, projectId],
+    [isBetaEnabled, isSidebarFilterLoading, projectId, userId],
   );
 
   const queryFilter = useSidebarFilterState(
@@ -294,8 +308,6 @@ export default function SessionsTable({
     projectId,
     filter: backendFilterState,
     orderBy: null,
-    page: 0,
-    limit: 1,
   };
 
   const payloadGetAll = {
@@ -381,7 +393,7 @@ export default function SessionsTable({
 
   const sessionRowData = useMemo(
     () =>
-      joinTableCoreAndMetrics<SessionCoreOutput, SessionMetricOutput>(
+      joinSessionCoreAndMetrics<SessionCoreOutput, SessionMetricOutput>(
         sessions.data?.sessions,
         sessionMetrics.data,
       ),
@@ -403,6 +415,7 @@ export default function SessionsTable({
     projectId,
     tableName: "sessions",
     setSelectedRows,
+    setSelectAll,
   });
 
   const handleAddToAnnotationQueue = async ({
@@ -446,31 +459,6 @@ export default function SessionsTable({
 
   const columns: LangfuseColumnDef<SessionTableRow>[] = [
     selectActionColumn,
-    {
-      accessorKey: "bookmarked",
-      id: "bookmarked",
-      isFixedPosition: true,
-      header: undefined,
-      size: 50,
-      loadingCell: <TableIconButtonLoadingCell />,
-      cell: ({ row }) => {
-        const bookmarked: SessionTableRow["bookmarked"] =
-          row.getValue("bookmarked");
-        const sessionId: SessionTableRow["id"] = row.getValue("id");
-
-        return typeof sessionId === "string" &&
-          typeof bookmarked === "boolean" ? (
-          <StarSessionToggle
-            sessionId={sessionId}
-            projectId={projectId}
-            value={bookmarked}
-            size="icon-xs"
-          />
-        ) : undefined;
-      },
-      enableSorting: false,
-    },
-
     {
       accessorKey: "id",
       id: "id",
@@ -533,6 +521,7 @@ export default function SessionsTable({
           <Badge
             variant="secondary"
             className="max-w-fit truncate rounded-sm px-1 font-normal"
+            title={value}
           >
             {value}
           </Badge>
@@ -754,7 +743,8 @@ export default function SessionsTable({
           return <TableTextLoadingCell />;
         }
         return (
-          value && (
+          value &&
+          value.length > 0 && (
             <div
               className={cn(
                 "flex gap-x-2 gap-y-1",
@@ -777,37 +767,63 @@ export default function SessionsTable({
     columns,
   );
 
+  const selectedSessionIds = useMemo(
+    () =>
+      Object.keys(selectedRows).filter((sessionId) =>
+        sessions.data?.sessions.map((s) => s.id).includes(sessionId),
+      ),
+    [selectedRows, sessions.data?.sessions],
+  );
+
+  const selectedSessionCount = selectAll
+    ? totalCount
+    : selectedSessionIds.length;
+
   const { isLoading: isViewLoading, ...viewControllers } = useTableViewManager({
     tableName: TableViewPresetTableName.Sessions,
     projectId,
     stateUpdaters: {
       setOrderBy: setOrderByState,
       setFilters: setFiltersWrapper,
+      setExpandedFilters: queryFilter.onExpandedChange,
       setColumnOrder: setColumnOrder,
       setColumnVisibility: setColumnVisibility,
     },
     validationContext: {
       columns,
       filterColumnDefinition: sessionsFilterConfig.columnDefinitions,
+      expandableFilterColumns: sessionsFilterConfig.facets.map(
+        (facet) => facet.column,
+      ),
     },
     currentFilterState: queryFilter.explicitFilterState,
+    currentExpandedFilters: queryFilter.expanded,
   });
 
   return (
     <DataTableControlsProvider tableName={sessionsFilterConfig.tableName}>
       <div className="flex h-full w-full flex-col">
+        {showControlsInPageHeader && (
+          <TableHeaderControls
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+          />
+        )}
         {/* Toolbar spanning full width */}
         <DataTableToolbar
           filterState={queryFilter.explicitFilterState}
           actionButtons={[
-            Object.keys(selectedRows).filter((sessionId) =>
-              sessions.data?.sessions.map((s) => s.id).includes(sessionId),
-            ).length > 0 ? (
+            selectedSessionIds.length > 0 || selectAll ? (
               <TableActionMenu
                 key="sessions-multi-select-actions"
                 projectId={projectId}
                 actions={tableActions}
                 tableName={BatchExportTableName.Sessions}
+                selectedCount={selectedSessionCount}
+                onClearSelection={() => {
+                  setSelectedRows({});
+                  setSelectAll(false);
+                }}
               />
             ) : null,
             <BatchExportTableButton
@@ -830,17 +846,15 @@ export default function SessionsTable({
             projectId,
             controllers: viewControllers,
           }}
-          timeRange={timeRange}
-          setTimeRange={setTimeRange}
+          timeRange={showControlsInPageHeader ? undefined : timeRange}
+          setTimeRange={showControlsInPageHeader ? undefined : setTimeRange}
           columnsWithCustomSelect={["userIds"]}
           rowHeight={rowHeight}
           setRowHeight={setRowHeight}
           multiSelect={{
             selectAll,
             setSelectAll,
-            selectedRowIds: Object.keys(selectedRows).filter((sessionId) =>
-              sessions.data?.sessions.map((s) => s.id).includes(sessionId),
-            ),
+            selectedRowIds: selectedSessionIds,
             setRowSelection: setSelectedRows,
             totalCount,
             ...paginationState,
@@ -849,11 +863,15 @@ export default function SessionsTable({
 
         {/* Content area with sidebar and table */}
         <ResizableFilterLayout>
-          <DataTableControls queryFilter={queryFilter} />
+          <DataTableControls
+            // Remount the sidebar when the saved view changes so the new view's filters replace any stale draft UI state.
+            key={viewControllers.selectedViewId ?? "no-view"}
+            queryFilter={queryFilter}
+          />
 
           <div className="flex flex-1 flex-col overflow-hidden">
             <DataTable
-              tableName={"sessions"}
+              tableName="sessions"
               columns={columns}
               data={
                 sessions.isPending || isViewLoading
@@ -872,7 +890,6 @@ export default function SessionsTable({
                             return {
                               id: session.id,
                               createdAt: session.createdAt,
-                              bookmarked: session.bookmarked,
                               userIds: session.userIds,
                               countTraces: session.countTraces,
                               sessionDuration: session.sessionDuration,
@@ -902,6 +919,7 @@ export default function SessionsTable({
               columnOrder={columnOrder}
               onColumnOrderChange={setColumnOrder}
               rowSelection={selectedRows}
+              highlightAllRows={selectAll}
               setRowSelection={setSelectedRows}
               help={{
                 description:

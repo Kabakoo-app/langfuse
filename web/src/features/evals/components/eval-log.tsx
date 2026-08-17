@@ -1,4 +1,4 @@
-import { StatusBadge } from "@/src/components/layouts/status-badge";
+import { StatusBadge } from "@/src/components/ui/StatusBadge/StatusBadge";
 import { DataTable } from "@/src/components/table/data-table";
 import {
   type CustomHeights,
@@ -32,7 +32,6 @@ export type JobExecutionRow = {
   startTime?: string;
   endTime?: string;
   traceId?: string;
-  sessionId?: string;
   executionTraceId?: string;
   templateId: string;
   evaluatorId: string;
@@ -85,10 +84,9 @@ export default function EvalLogTable({
       cell: (row) => {
         const status = row.getValue();
         return (
-          <StatusBadge
-            className="w-fit self-start"
-            type={status.toLowerCase()}
-          />
+          <div className="w-fit self-start">
+            <StatusBadge type={status.toLowerCase()} />
+          </div>
         );
       },
     }),
@@ -126,11 +124,24 @@ export default function EvalLogTable({
       header: "Score Comment",
       id: "scoreComment",
       enableHiding: true,
+      cellPadding: "none",
+      loadingCell: () => (
+        <IOTableCell
+          isLoading
+          data={undefined}
+          padding="compact"
+          singleLine={rowHeight === "s"}
+        />
+      ),
       cell: (row) => {
         const value = row.getValue();
         return (
           value !== undefined && (
-            <IOTableCell data={value} singleLine={rowHeight === "s"} />
+            <IOTableCell
+              data={value}
+              padding="compact"
+              singleLine={rowHeight === "s"}
+            />
           )
         );
       },
@@ -139,11 +150,24 @@ export default function EvalLogTable({
       id: "error",
       header: "Error",
       enableHiding: true,
+      cellPadding: "none",
+      loadingCell: () => (
+        <IOTableCell
+          isLoading
+          data={undefined}
+          padding="compact"
+          singleLine={rowHeight === "s"}
+        />
+      ),
       cell: (row) => {
         const value = row.getValue();
         return (
           value !== undefined && (
-            <IOTableCell data={value} singleLine={rowHeight === "s"} />
+            <IOTableCell
+              data={value}
+              padding="compact"
+              singleLine={rowHeight === "s"}
+            />
           )
         );
       },
@@ -157,20 +181,6 @@ export default function EvalLogTable({
           <TableLink
             path={`/project/${projectId}/traces/${encodeURIComponent(traceId)}`}
             value={traceId}
-          />
-        ) : undefined;
-      },
-    }),
-    columnHelper.accessor("sessionId", {
-      id: "sessionId",
-      header: "Session",
-      enableHiding: true,
-      cell: (row) => {
-        const sessionId = row.getValue();
-        return sessionId ? (
-          <TableLink
-            path={`/project/${projectId}/sessions/${encodeURIComponent(sessionId)}`}
-            value={sessionId}
           />
         ) : undefined;
       },
@@ -243,7 +253,6 @@ export default function EvalLogTable({
       startTime: jobConfig.startTime?.toLocaleString() ?? undefined,
       endTime: jobConfig.endTime?.toLocaleString() ?? undefined,
       traceId: jobConfig.jobInputTraceId ?? undefined,
-      sessionId: jobConfig.sessionId ?? undefined,
       executionTraceId: jobConfig.executionTraceId ?? undefined,
       templateId: jobConfig.jobTemplateId ?? "",
       evaluatorId: jobConfig.jobConfigurationId,
@@ -273,7 +282,7 @@ export default function EvalLogTable({
 
           <div className="flex flex-1 flex-col overflow-hidden">
             <DataTable
-              tableName={"evalLogs"}
+              tableName="evalLogs"
               columns={columns}
               data={
                 logs.isLoading

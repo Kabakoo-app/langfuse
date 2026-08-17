@@ -1,7 +1,4 @@
-# Codex Guidelines for `@langfuse/shared`
-
-This file covers package-local guidance for this package.
-Use root [AGENTS.md](../../AGENTS.md) for monorepo-level rules.
+# Agent Guidelines for `@langfuse/shared`
 
 ## Purpose
 
@@ -12,13 +9,9 @@ Use root [AGENTS.md](../../AGENTS.md) for monorepo-level rules.
 
 ## Maintenance Contract
 
-- `AGENTS.md` is a living document.
-- Update this file in the same PR for material shared-package changes:
-  - new/renamed schema or migration workflows
-  - new/renamed queue contracts
-  - changed exported surfaces or validation commands
-- Because this package is consumed by both `web` and `worker`, cross-package
-  changes usually require updates in root `AGENTS.md` too.
+- Update this file in the same PR when entry points, commands, or contracts
+  change. Because both `web` and `worker` consume this package, exported-surface
+  changes usually need their `AGENTS.md` too.
 
 ## High-Signal Entry Points
 
@@ -30,7 +23,11 @@ Use root [AGENTS.md](../../AGENTS.md) for monorepo-level rules.
 - Repository layer: `src/server/repositories/*`
 - Queue payload schemas: `src/server/queues.ts`
 - Queue helpers: `src/server/redis/*`
+- Dashboard/monitor query feature (data model + server-only builder/executor): `src/features/query/*`
 - Postgres schema: `prisma/schema.prisma`
+- For unstable public eval APIs, the public `evaluatorId` is currently the
+  exact `EvalTemplate.id`. Latest-version family grouping is derived from
+  `(projectId, name)` rather than stored on extra evaluator identity fields.
 - Prisma migrations: `prisma/migrations/*`
 - ClickHouse migrations: `clickhouse/migrations/{clustered,unclustered}/*`
 - Seeder and support scripts: `scripts/seeder/*`, `clickhouse/scripts/*`
@@ -40,10 +37,15 @@ Use root [AGENTS.md](../../AGENTS.md) for monorepo-level rules.
 - `@langfuse/shared` via `src/index.ts`: default shared surface for
   cross-runtime types, zod schemas, table definitions, domain models, prompt
   helpers, eval/model-pricing helpers, and other frontend-safe utilities.
+  Includes the unicode-decoding JSON serialization helpers (`stringify`,
+  `stringifyForCsv` in `src/utils/stringify.ts`) used by both the server
+  trace-download route and client-side download/copy paths; the server barrel
+  re-exports them for compatibility.
 - `@langfuse/shared/src/server` via `src/server/index.ts`: server-only barrel
   for shared backend services, repositories, queue helpers/contracts, Redis and
   ClickHouse helpers, auth helpers, logger/instrumentation, ingestion helpers,
-  LLM execution helpers, and server test utilities.
+  AI SDK-native LLM execution helpers (`generateLLMText` and
+  `streamLLMText`), and server test utilities.
 - `@langfuse/shared/src/db` via `src/db.ts`: Prisma client singleton plus
   Prisma namespace/types for direct database access. Never route this into
   frontend-safe code.
@@ -51,6 +53,17 @@ Use root [AGENTS.md](../../AGENTS.md) for monorepo-level rules.
   schema/accessors used by backend runtimes and scripts.
 - `@langfuse/shared/encryption` via `src/encryption/index.ts`: encryption and
   signature helpers for secrets and signed payloads.
+- `@langfuse/shared/query` via `src/features/query/index.ts`: dashboard query feature.
+- `@langfuse/shared/in-app-agent` via `src/in-app-agent/index.ts`:
+  client-safe in-app-agent contracts (AG-UI schemas, constants, id helpers).
+  `AgUiRunAgentInput` is a compile-time-only execution contract; there is no
+  runtime input or browser runtime-state schema. Never re-export server code
+  here.
+- `@langfuse/shared/in-app-agent/server` (plus per-module subpaths via the
+  `./in-app-agent/server/*` wildcard) via `src/in-app-agent/server/`:
+  the in-app-agent runtime (Mastra/Bedrock/MCP loop, tools, persistence,
+  sandbox), consumed by web's router/watch adapters and the worker execution
+  processor.
 - Narrower exported subpaths also exist for targeted imports:
   `@langfuse/shared/src/server/auth/apiKeys`,
   `@langfuse/shared/src/server/ee/ingestionMasking`, and
@@ -95,6 +108,10 @@ the same PR.
 ### ClickHouse schema change
 
 1. Add migration under `clickhouse/migrations/*`.
+   - Redefining views or materialized views follows strict patterns (no
+     `CREATE OR REPLACE VIEW`; MV SELECT changes via
+     `ALTER TABLE … MODIFY QUERY`) — apply the "Langfuse-Specific Rules" in
+     `.agents/skills/clickhouse-best-practices/SKILL.md` for any new ClickHouse migration.
 2. Update ClickHouse query/mapping logic in `src/server/clickhouse/*` and
    related repositories.
 3. Validate ingestion/read path impact in both `web` and `worker`.
@@ -105,8 +122,8 @@ the same PR.
    set), fetch the latest published docs and check for discrepancies:
    - https://langfuse.com/docs/api-and-data-platform/features/export-to-blob-storage
    - https://langfuse.com/docs/api-and-data-platform/features/blob-storage-export-fields
-   Surface any mismatches in field names, types, nullability, or filter
-   descriptions so they can be addressed in the docs repo.
+     Surface any mismatches in field names, types, nullability, or filter
+     descriptions so they can be addressed in the docs repo.
 
 ### Queue payload contract change
 

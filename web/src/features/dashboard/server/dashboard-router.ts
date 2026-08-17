@@ -20,30 +20,32 @@ import {
   DashboardDefinitionSchema,
 } from "@langfuse/shared/src/server";
 import { type DatabaseRow } from "@/src/server/api/services/sqlInterface";
+import { executeQuery } from "@langfuse/shared/query/server";
 import {
-  type QueryType,
   query as customQuery,
+  validateQuery,
   viewVersions,
-} from "@/src/features/query/types";
-import { mapLegacyUiTableFilterToView } from "@/src/features/query/dashboardUiTableToViewMapping";
+  type QueryType,
+} from "@langfuse/shared/query";
+import { mapLegacyUiTableFilterToView } from "@/src/features/dashboard/lib/dashboardUiTableToViewMapping";
 import {
   paginationZod,
   orderBy,
   StringNoHTML,
   InvalidRequestError,
   singleFilter,
+  LANGFUSE_HOME_DASHBOARD_ID,
   type FilterState,
 } from "@langfuse/shared";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
-import {
-  executeQuery,
-  validateQuery,
-} from "@/src/features/query/server/queryExecutor";
 
 // Define the dashboard list input schema
 const ListDashboardsInput = z.object({
   projectId: z.string(),
   ...paginationZod,
+  // The Home-dashboard picker and clone detection fetch the whole list in one
+  // page, so allow a higher ceiling than the default table pagination.
+  limit: z.coerce.number().int().positive().lte(500).default(50),
   orderBy: orderBy,
 });
 
@@ -79,6 +81,18 @@ const CreateDashboardInput = z.object({
 const CloneDashboardInput = z.object({
   projectId: z.string(),
   dashboardId: z.string(),
+  // Optional definition override so an edit attempted on a read-only
+  // dashboard (e.g. a tile moved on the curated Home) carries into the clone.
+  definition: DashboardDefinitionSchema.optional(),
+  // Set the clone as the project's home dashboard in the same gesture.
+  setAsHome: z.boolean().optional(),
+});
+
+// Set home dashboard input schema
+const SetHomeDashboardInput = z.object({
+  projectId: z.string(),
+  // null resets to the Langfuse-curated default
+  dashboardId: z.string().min(1).nullable(),
 });
 
 // Update dashboard filters input schema
@@ -87,6 +101,18 @@ const UpdateDashboardFiltersInput = z.object({
   dashboardId: z.string(),
   filters: z.array(singleFilter),
 });
+
+/**
+ * First free clone name: "ABC (Clone)", then "ABC (Clone 2)", "ABC (Clone 3)", …
+ */
+function nextCloneName(sourceName: string, existingNames: string[]): string {
+  const taken = new Set(existingNames);
+  const base = `${sourceName} (Clone)`;
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${sourceName} (Clone ${n})`)) n++;
+  return `${sourceName} (Clone ${n})`;
+}
 
 // Map camelCase legacy column names (used by scoreHistogram component)
 // to view-native field names before passing through the general mapper.
@@ -265,32 +291,13 @@ async function getObservationsByTypeV2(params: {
 
   // Filter normalisation for the executeQuery (v2) path:
   //
-  // Filters arriving here originate from two different column-naming conventions:
-  //   A) uiTableName format ("Model", "Environment", …) — used by globalFilterState
-  //      filters that come from the standard dashboard filter bar. These are handled
-  //      canonically by mapLegacyUiTableFilterToView (see dashboardUiTableToViewMapping.ts).
-  //   B) uiTableId format ("model") — used by ModelSelectorPopover, which constructs
-  //      its filter using the lower-camel uiTableId rather than the display uiTableName.
-  //      mapLegacyUiTableFilterToView matches on uiTableName so it cannot cover this case.
-  //
-  // If additional uiTableId-format filters are introduced here in the future, add them
-  // to the CHART_FILTER_ID_TO_VIEW_FIELD map below (the canonical view field names live
-  // in dashboardUiTableToViewMapping.ts :: viewMappings["observations"]).
-  const CHART_FILTER_ID_TO_VIEW_FIELD: Record<string, string> = {
-    model: "providedModelName",
-  };
-
   const nonDatetimeFilters = filter.filter((f) => f.type !== "datetime");
-  // Apply standard uiTableName → view field mapping first.
-  const standardMapped = mapLegacyUiTableFilterToView(
+  // mapLegacyUiTableFilterToView normalizes legacy dashboard filters whether
+  // they arrive as display labels, uiTableIds, or explicit aliases.
+  const viewFilters = mapLegacyUiTableFilterToView(
     "observations",
     nonDatetimeFilters,
   );
-  // Then patch any remaining uiTableId-format columns.
-  const viewFilters = standardMapped.map((f) => {
-    const viewField = CHART_FILTER_ID_TO_VIEW_FIELD[f.column];
-    return viewField ? { ...f, column: viewField } : f;
-  });
 
   const q: QueryType = {
     view: "observations",
@@ -596,16 +603,104 @@ export const dashboardRouter = createTRPCRouter({
         });
       }
 
-      // Create a new dashboard with the same data but modified name
+      // Create a new dashboard with the same data but a numbered clone name
+      const existingClones = await ctx.prisma.dashboard.findMany({
+        where: {
+          projectId: input.projectId,
+          name: { startsWith: `${sourceDashboard.name} (Clone` },
+        },
+        select: { name: true },
+      });
+
       const clonedDashboard = await DashboardService.createDashboard(
         input.projectId,
-        `${sourceDashboard.name} (Clone)`,
+        nextCloneName(
+          sourceDashboard.name,
+          existingClones.map((d) => d.name),
+        ),
         sourceDashboard.description,
         ctx.session.user.id,
-        sourceDashboard.definition,
+        input.definition ?? sourceDashboard.definition,
       );
 
+      if (input.setAsHome) {
+        await ctx.prisma.project.update({
+          where: { id: input.projectId },
+          data: { homeDashboardId: clonedDashboard.id },
+        });
+      }
+
       return clonedDashboard;
+    }),
+
+  getHomeDashboard: protectedProjectProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "dashboards:read",
+      });
+
+      const project = await ctx.prisma.project.findUnique({
+        where: { id: input.projectId },
+        select: { homeDashboardId: true },
+      });
+
+      // Resolve the pointer; a missing/foreign target silently falls back to
+      // the Langfuse-curated default (like an unset pointer).
+      const pointedDashboard = project?.homeDashboardId
+        ? await DashboardService.getDashboard(
+            project.homeDashboardId,
+            input.projectId,
+          )
+        : null;
+
+      const dashboard =
+        pointedDashboard ??
+        (await DashboardService.getDashboard(
+          LANGFUSE_HOME_DASHBOARD_ID,
+          input.projectId,
+        ));
+
+      return {
+        // null only when the curated row is also absent — the client then
+        // renders from the shared constant.
+        dashboard,
+        homeDashboardId: pointedDashboard
+          ? (project?.homeDashboardId ?? null)
+          : null,
+      };
+    }),
+
+  setHomeDashboard: protectedProjectProcedure
+    .input(SetHomeDashboardInput)
+    .mutation(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "dashboards:CUD",
+      });
+
+      if (input.dashboardId) {
+        const dashboard = await DashboardService.getDashboard(
+          input.dashboardId,
+          input.projectId,
+        );
+        if (!dashboard) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Dashboard not found",
+          });
+        }
+      }
+
+      await ctx.prisma.project.update({
+        where: { id: input.projectId },
+        data: { homeDashboardId: input.dashboardId },
+      });
+
+      return { success: true };
     }),
 
   updateDashboardFilters: protectedProjectProcedure

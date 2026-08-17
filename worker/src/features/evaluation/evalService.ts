@@ -1,17 +1,16 @@
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import {
+  EvalTemplateType,
   JobConfigState,
   JobExecutionStatus,
   type JobExecution,
   type JobConfiguration,
-  type EvalTemplate,
 } from "@prisma/client";
 import {
   QueueJobs,
   QueueName,
   EvalExecutionEvent,
-  traceException,
   logger,
   EvalExecutionQueue,
   checkTraceExistsAndGetTimestamp,
@@ -31,11 +30,14 @@ import {
   DEFAULT_TRACE_ENVIRONMENT,
   setNoEvalConfigsCache,
   DatasetRunItemUpsertEventType,
-  isLLMCompletionError,
+  classifyEvaluatorLlmError,
   blockEvaluatorConfigs,
   EvaluatorBlockSource,
+  type CodeEvalScoreWithName,
+  type EvaluatorLlmErrorClassification,
 } from "@langfuse/shared/src/server";
 import {
+  inMemoryFilterRequiresMetadata,
   mapTraceFilterColumn,
   requiresDatabaseLookup,
 } from "./traceFilterUtils";
@@ -52,15 +54,18 @@ import {
   TraceDomain,
   Observation,
   EvalTargetObject,
-  EvaluatorBlockReason,
   getEvaluatorBlockMetadata,
   getBlockReasonForInvalidModelConfig,
   isJobConfigExecutable,
+  type EvalTemplateLlmAsAJudge,
   PersistedEvalOutputDefinitionSchema,
   ScoreDataTypeEnum,
   validateEvalOutputResult,
+  type EvalOutputResult,
   extractValueFromObject,
+  validateEvaluatorFiltersForTarget,
 } from "@langfuse/shared";
+import { env } from "../../env";
 import { prisma } from "@langfuse/shared/src/db";
 import { createW3CTraceId } from "../utils";
 import { UnrecoverableError } from "../../errors/UnrecoverableError";
@@ -71,12 +76,27 @@ import {
   buildEvalExecutionMetadata,
   getEnvironmentFromVariables,
 } from "./evalRuntime";
-import { buildEvalScoreWritePayloads } from "./evalScoreEvent";
+import {
+  completeEvalExecution,
+  type EvalExecutionResult,
+} from "./evalCompletion";
+import {
+  isEvalTargetEnvironmentAllowed,
+  isInternalEvalEnvironment,
+} from "./isEvalTargetEnvironmentAllowed";
 import {
   type EvalExecutionDeps,
   createProductionEvalExecutionDeps,
 } from "./evalExecutionDeps";
-import { ExtractedVariable } from "./observationEval/extractObservationVariables";
+import { type ExtractedVariable } from "@langfuse/shared/src/server";
+import {
+  buildEvalExecutionSpanAttributes,
+  buildEvaluatorLlmErrorSpanAttributes,
+} from "./evalSpanAttributes";
+import {
+  getDeterministicSamplingValue,
+  shouldSampleEvaluation,
+} from "./deterministicSampling";
 
 /**
  * Determines which eval jobs to create for a given event (traces or dataset run items).
@@ -222,19 +242,19 @@ export const createEvalJobs = async ({
   // Without this safeguard: user trace → eval → eval trace → another eval → infinite loop
   //
   // IMPLEMENTATION:
-  // - Block ALL traces with environment starting with "langfuse-" when coming from trace-upsert queue
+  // - Block internal environments and their public-ingestion aliases when coming from trace-upsert queue
   // - This excludes traces from prompt experiments that come via dataset-run-item-upsert queue
   // - Internal traces (e.g., eval executions) use LangfuseInternalTraceEnvironment enum values
   //
-  // DUAL SAFEGUARD:
+  // DEFENSE IN DEPTH:
   // - This check prevents eval job CREATION for internal traces
-  // - fetchLLMCompletion.ts enforces that internal traces MUST use "langfuse-" prefix
+  // - Eval executors repeat the same environment check before execution
   //
-  // See: packages/shared/src/server/llm/fetchLLMCompletion.ts (enforcement)
+  // See: packages/shared/src/server/llm (enforcement)
   // See: packages/shared/src/server/llm/types.ts (LangfuseInternalTraceEnvironment enum)
   if (
     sourceEventType === "trace-upsert" &&
-    event.traceEnvironment?.startsWith("langfuse")
+    isInternalEvalEnvironment(event.traceEnvironment)
   ) {
     logger.debug("Skipping eval job creation for internal Langfuse trace", {
       traceId: event.traceId,
@@ -249,8 +269,24 @@ export const createEvalJobs = async ({
   recordIncrement("langfuse.evaluation-execution.config_count", configs.length);
   if (configs.length > 1) {
     try {
+      // Metadata is the heaviest column on this fetch. Skip it unless a
+      // trace-target config's filter reads it during in-memory evaluation;
+      // keep it for unparsable filters so a metadata filter never evaluates
+      // against an empty object.
+      const cachedTraceNeedsMetadata = configs.some((config) => {
+        if (config.targetObject !== EvalTargetObject.TRACE) {
+          return false;
+        }
+        const parsedFilter = z.array(singleFilter).safeParse(config.filter);
+        return (
+          !parsedFilter.success ||
+          inMemoryFilterRequiresMetadata(parsedFilter.data)
+        );
+      });
+
       // Fetch trace data and store it. If observation data is required, we'll make a separate lookup.
       // Those fields are used rarely, though.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       cachedTrace = await getTraceById({
         traceId: event.traceId,
         projectId: event.projectId,
@@ -260,13 +296,13 @@ export const createEvalJobs = async ({
             : "timestamp" in event
               ? new Date(event.timestamp)
               : new Date(jobTimestamp),
-        clickhouseFeatureTag: "eval-create",
         excludeInputOutput: true,
-        excludeMetadata: false, // Metadata needed for in-memory filter evaluation
+        excludeMetadata: !cachedTraceNeedsMetadata,
       });
 
       recordIncrement("langfuse.evaluation-execution.trace_cache_fetch", 1, {
         found: Boolean(cachedTrace).toString(),
+        withMetadata: cachedTraceNeedsMetadata.toString(),
       });
       logger.debug("Fetched trace for evaluation optimization", {
         traceId: event.traceId,
@@ -365,10 +401,35 @@ export const createEvalJobs = async ({
     );
   };
 
+  const samplingTargetId =
+    "observationId" in event && event.observationId
+      ? event.observationId
+      : event.traceId;
+  const samplingValue = getDeterministicSamplingValue(samplingTargetId);
+
   for (const config of configs) {
     if (config.status === JobConfigState.INACTIVE) {
       logger.debug(`Skipping inactive config ${config.id}`);
       continue;
+    }
+
+    // Self-hosted only: Skip trace-level evaluators with invalid filters.
+    // A bug (ff4b03c0b, Feb 2026) allowed score filters on trace evaluators, which the worker doesn't support.
+    // Cloud deployments are fixed; self-hosters need this runtime check.
+    if (
+      !env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION &&
+      config.targetObject === EvalTargetObject.TRACE
+    ) {
+      const filterValidation = validateEvaluatorFiltersForTarget({
+        targetObject: EvalTargetObject.TRACE,
+        filter: config.filter,
+      });
+      if (!filterValidation.isValid) {
+        logger.debug(
+          `Skipping trace evaluator ${config.id} with invalid filters: ${filterValidation.issues[0]?.message}`,
+        );
+        continue;
+      }
     }
 
     logger.debug("Creating eval job for config", config.id);
@@ -411,7 +472,7 @@ export const createEvalJobs = async ({
       });
     } else {
       // If the event is not a DatasetRunItemUpsertEventType and the trace has no special filters, we can already assume it's present
-      let exists: boolean = false;
+      let exists = false;
       let timestamp: Date | undefined = undefined;
       if (!("datasetItemId" in event) && traceFilter.length === 0) {
         exists = true;
@@ -589,16 +650,17 @@ export const createEvalJobs = async ({
         continue;
       }
 
-      // apply sampling. Only if the job is sampled, we create a job
-      // user supplies a number between 0 and 1, which is the probability of sampling
-      if (Number(config.sampling) !== 1) {
-        const random = Math.random();
-        if (random > Number(config.sampling)) {
-          logger.debug(
-            `Eval job for config ${config.id} and trace ${event.traceId} was sampled out`,
-          );
-          continue;
-        }
+      const samplingRate = Number(config.sampling);
+      if (
+        !shouldSampleEvaluation({
+          samplingValue,
+          samplingRate,
+        })
+      ) {
+        logger.debug(
+          `Eval job for config ${config.id} and trace ${event.traceId} was sampled out`,
+        );
+        continue;
       }
 
       logger.debug(
@@ -689,8 +751,7 @@ export const createEvalJobs = async ({
  * It handles:
  * - Compiling the prompt with extracted variables
  * - Calling the LLM with structured output
- * - Persisting the score to S3 and queueing for ingestion
- * - Updating job execution status
+ * - Returning the validated eval output and completion metadata
  *
  * Note: Callers are responsible for:
  * - Fetching and validating job, config, and template
@@ -703,27 +764,28 @@ export const createEvalJobs = async ({
  * @param params.config - Pre-fetched job configuration
  * @param params.template - Pre-fetched eval template
  * @param params.extractedVariables - Pre-extracted variables from trace/observation data
+ * @param params.executionMetadata - Metadata identifying this eval execution
  * @param params.deps - Optional dependency injection for testing (defaults to production deps)
  */
-export async function executeLLMAsJudgeEvaluation({
+export async function runLLMAsJudgeEvaluation({
   projectId,
   jobExecutionId,
   job,
   config,
   template,
   extractedVariables,
-  environment,
-  deps = createProductionEvalExecutionDeps(),
+  executionMetadata,
+  deps,
 }: {
   projectId: string;
   jobExecutionId: string;
   job: JobExecution;
   config: JobConfiguration;
-  template: EvalTemplate;
+  template: EvalTemplateLlmAsAJudge;
   extractedVariables: ExtractedVariable[];
-  environment: string;
-  deps?: EvalExecutionDeps;
-}): Promise<void> {
+  executionMetadata: Record<string, string>;
+  deps: EvalExecutionDeps;
+}): Promise<EvalExecutionResult> {
   return instrumentAsync(
     { name: "eval.execute-llm-as-judge" },
     async (span) => {
@@ -731,6 +793,10 @@ export async function executeLLMAsJudgeEvaluation({
       span.setAttribute("eval.job_execution.id", jobExecutionId);
       span.setAttribute("eval.template.name", template.name);
       span.setAttribute("eval.template.id", template.id);
+      span.setAttribute("eval.template.version", template.version);
+      span.setAttribute("eval.score.name", config.scoreName);
+      span.setAttributes(buildEvalExecutionSpanAttributes({ config }));
+      span.setAttribute("eval.execution.stage", "compile_prompt");
       if (job.jobInputTraceId) {
         span.setAttribute("eval.target.trace_id", job.jobInputTraceId);
       }
@@ -759,6 +825,7 @@ export async function executeLLMAsJudgeEvaluation({
           variables: extractedVariables,
         });
       } catch (e) {
+        span.setAttribute("eval.prompt.compilation_fallback", true);
         logger.error(
           `Failed to compile prompt for job ${jobExecutionId}. Eval will fail. ${e}`,
         );
@@ -770,12 +837,14 @@ export async function executeLLMAsJudgeEvaluation({
       );
 
       // Parse and validate output definition
+      span.setAttribute("eval.execution.stage", "validate_template");
       const parsedOutputDefinition =
         PersistedEvalOutputDefinitionSchema.safeParse(
           template.outputDefinition,
         );
 
       if (!parsedOutputDefinition.success) {
+        span.setAttribute("eval.execution.outcome", "invalid_template");
         throw new UnrecoverableError(
           "Output definition not found or invalid in evaluation template",
         );
@@ -785,15 +854,13 @@ export async function executeLLMAsJudgeEvaluation({
         parsedOutputDefinition.data,
       );
 
-      span.setAttribute("eval.job_configuration.id", config.id);
-      span.setAttribute("eval.template.version", template.version);
-      span.setAttribute("eval.score.name", config.scoreName);
       span.setAttribute(
         "eval.score.data_type",
         compiledOutputDefinition.resolvedOutputDefinition.dataType,
       );
 
       // Get model configuration
+      span.setAttribute("eval.execution.stage", "resolve_model_config");
       const modelConfig = await deps.fetchModelConfig({
         projectId,
         provider: template.provider ?? undefined,
@@ -808,6 +875,13 @@ export async function executeLLMAsJudgeEvaluation({
           error: modelConfig.error,
         });
 
+        span.setAttributes({
+          "eval.execution.outcome": "blocked",
+          "eval.llm.blocked": true,
+          "eval.llm.block.reason": blockReason,
+          "eval.llm.block.source": EvaluatorBlockSource.INVALID_MODEL_CONFIG,
+        });
+
         await blockEvaluatorConfigs({
           projectId,
           where: { id: config.id },
@@ -815,6 +889,7 @@ export async function executeLLMAsJudgeEvaluation({
           blockMessage: getEvaluatorBlockMetadata(blockReason).message,
           source: EvaluatorBlockSource.INVALID_MODEL_CONFIG,
         });
+        span.setAttribute("eval.llm.block.applied", true);
 
         logger.warn(
           `Eval job ${jobExecutionId} will fail. ${modelConfig.error}`,
@@ -826,93 +901,113 @@ export async function executeLLMAsJudgeEvaluation({
 
       span.setAttribute("eval.model.provider", modelConfig.config.provider);
       span.setAttribute("eval.model.name", modelConfig.config.model);
+      span.setAttribute("eval.model.adapter", modelConfig.config.adapter);
 
       // Prepare LLM call
       const messages = buildEvalMessages(prompt);
 
-      const primaryScoreId = randomUUID();
-      span.setAttribute("eval.score.id", primaryScoreId);
       const executionTraceId = createW3CTraceId(jobExecutionId);
-
-      const executionMetadata = buildEvalExecutionMetadata({
-        jobExecutionId,
-        jobConfigurationId: job.jobConfigurationId,
-        targetTraceId: job.jobInputTraceId,
-        targetObservationId: job.jobInputObservationId,
-        targetDatasetItemId: job.jobInputDatasetItemId,
+      span.setAttributes({
+        "eval.execution.trace_id": executionTraceId,
+        "eval.execution.stage": "call_llm",
       });
 
       // Call LLM
-      const llmOutput = await instrumentAsync(
-        { name: "eval.call-llm" },
-        async (llmSpan) => {
-          llmSpan.setAttribute("eval.job_configuration.id", config.id);
-          llmSpan.setAttribute("eval.template.id", template.id);
-          llmSpan.setAttribute("eval.template.version", template.version);
-          llmSpan.setAttribute("eval.score.name", config.scoreName);
-          llmSpan.setAttribute(
-            "eval.score.data_type",
-            compiledOutputDefinition.resolvedOutputDefinition.dataType,
-          );
-          llmSpan.setAttribute(
-            "eval.model.provider",
-            modelConfig.config.provider,
-          );
-          llmSpan.setAttribute("eval.model.name", modelConfig.config.model);
-          llmSpan.setAttribute(
-            "eval.model.adapter",
-            modelConfig.config.adapter,
-          );
+      let llmErrorClassification:
+        | EvaluatorLlmErrorClassification
+        | null
+        | undefined;
+      let llmOutput: unknown;
+      try {
+        llmOutput = await instrumentAsync(
+          { name: "eval.call-llm" },
+          async (llmSpan) => {
+            llmSpan.setAttribute("langfuse.project.id", projectId);
+            llmSpan.setAttribute("eval.job_execution.id", jobExecutionId);
+            llmSpan.setAttribute("eval.execution.trace_id", executionTraceId);
+            llmSpan.setAttribute("eval.job_configuration.id", config.id);
+            llmSpan.setAttribute("eval.template.id", template.id);
+            llmSpan.setAttribute("eval.template.version", template.version);
+            llmSpan.setAttribute("eval.score.name", config.scoreName);
+            llmSpan.setAttribute(
+              "eval.score.data_type",
+              compiledOutputDefinition.resolvedOutputDefinition.dataType,
+            );
+            llmSpan.setAttribute(
+              "eval.model.provider",
+              modelConfig.config.provider,
+            );
+            llmSpan.setAttribute("eval.model.name", modelConfig.config.model);
+            llmSpan.setAttribute(
+              "eval.model.adapter",
+              modelConfig.config.adapter,
+            );
 
-          try {
-            return await deps.callLLM({
-              messages,
-              modelConfig: modelConfig.config,
-              structuredOutputSchema:
-                compiledOutputDefinition.outputResultSchema,
-              traceSinkParams: {
-                targetProjectId: projectId,
-                traceId: executionTraceId,
-                traceName: `Execute evaluator: ${template.name}`,
-                environment: LangfuseInternalTraceEnvironment.LLMJudge,
-                metadata: {
-                  ...executionMetadata,
-                  score_id: primaryScoreId,
+            try {
+              const output = await deps.callLLM({
+                messages,
+                modelConfig: modelConfig.config,
+                structuredOutputSchema:
+                  compiledOutputDefinition.outputResultSchema,
+                traceSinkParams: {
+                  targetProjectId: projectId,
+                  traceId: executionTraceId,
+                  traceName: `Execute evaluator: ${template.name}`,
+                  environment: LangfuseInternalTraceEnvironment.LLMJudge,
+                  metadata: {
+                    ...executionMetadata,
+                  },
                 },
-              },
-            });
-          } catch (e) {
-            if (isLLMCompletionError(e)) {
-              llmSpan.setAttribute(
-                "http.response.status_code",
-                e.responseStatusCode,
+              });
+              llmSpan.setAttribute("eval.llm.outcome", "success");
+              return output;
+            } catch (e) {
+              llmErrorClassification = classifyEvaluatorLlmError(e);
+              llmSpan.setAttributes(
+                buildEvaluatorLlmErrorSpanAttributes(llmErrorClassification),
               );
-
-              if (e.shouldBlockConfig()) {
-                const blockReason =
-                  e.getEvaluatorBlockReason() ??
-                  EvaluatorBlockReason.EVAL_MODEL_CONFIG_INVALID;
-
-                await blockEvaluatorConfigs({
-                  projectId,
-                  where: { id: config.id },
-                  blockReason,
-                  blockMessage: getEvaluatorBlockMetadata(blockReason).message,
-                  source: EvaluatorBlockSource.LLM_COMPLETION_ERROR,
-                });
-              }
+              llmSpan.setAttribute(
+                "eval.llm.outcome",
+                llmErrorClassification?.blockReason ? "blocked" : "error",
+              );
+              throw e;
             }
-            throw e;
-          }
-        },
-      );
+          },
+        );
+      } catch (e) {
+        const classification =
+          llmErrorClassification ?? classifyEvaluatorLlmError(e);
+        span.setAttributes(
+          buildEvaluatorLlmErrorSpanAttributes(classification),
+        );
+        span.setAttribute(
+          "eval.execution.outcome",
+          classification?.blockReason ? "blocked" : "llm_error",
+        );
 
+        if (classification?.blockReason) {
+          const blockReason = classification.blockReason;
+          await blockEvaluatorConfigs({
+            projectId,
+            where: { id: config.id },
+            blockReason,
+            blockMessage: getEvaluatorBlockMetadata(blockReason).message,
+            source: EvaluatorBlockSource.LLM_COMPLETION_ERROR,
+          });
+          span.setAttribute("eval.llm.block.applied", true);
+        }
+
+        throw e;
+      }
+
+      span.setAttribute("eval.execution.stage", "validate_llm_output");
       const parsedLLMOutput = validateEvalOutputResult({
         response: llmOutput,
         compiledOutputDefinition,
       });
 
       if (!parsedLLMOutput.success) {
+        span.setAttribute("eval.execution.outcome", "invalid_model_output");
         throw new UnrecoverableError(
           `Invalid LLM response format from model ${modelConfig.config.model}. Error: ${parsedLLMOutput.error}`,
         );
@@ -928,72 +1023,95 @@ export async function executeLLMAsJudgeEvaluation({
         }`,
       );
 
-      const scoreWritePayloads = buildEvalScoreWritePayloads({
+      const scores = toNormalizedScores({
         outputResult: parsedLLMOutput.data,
-        primaryScoreId,
-        traceId: job.jobInputTraceId,
-        observationId: job.jobInputObservationId,
         scoreName: config.scoreName,
-        environment,
+      });
+
+      span.setAttribute("eval.score.count", scores.length);
+      span.setAttributes({
+        "eval.execution.stage": "completed",
+        "eval.execution.outcome": "success",
+      });
+
+      return {
+        scores,
         executionTraceId,
         metadata: executionMetadata,
-      });
-
-      span.setAttribute("eval.score.count", scoreWritePayloads.length);
-
-      // Write score to S3 and enqueue for ingestion
-      try {
-        await Promise.all(
-          scoreWritePayloads.map(async ({ scoreId, eventId, event }) => {
-            await deps.uploadScore({
-              projectId,
-              scoreId,
-              eventId,
-              event,
-            });
-
-            await deps.enqueueScoreIngestion({
-              projectId,
-              scoreId,
-              eventId,
-            });
-          }),
-        );
-      } catch (e) {
-        logger.error(`Failed to persist score: ${e}`, e);
-        traceException(e);
-        throw new Error(
-          `Failed to write score ${primaryScoreId} into IngestionQueue`,
-        );
-      }
-
-      logger.debug(
-        `Persisted ${scoreWritePayloads.length} score(s) for job ${jobExecutionId}`,
-      );
-
-      // Update job execution status
-      await deps.updateJobExecution({
-        id: jobExecutionId,
-        projectId,
-        data: {
-          status: JobExecutionStatus.COMPLETED,
-          endTime: new Date(),
-          jobOutputScoreId: primaryScoreId,
-          executionTraceId,
-        },
-      });
-
-      logger.debug(
-        `Eval job ${job.id} completed with ${
-          parsedLLMOutput.data.dataType === ScoreDataTypeEnum.NUMERIC
-            ? `score ${parsedLLMOutput.data.score}`
-            : parsedLLMOutput.data.dataType === ScoreDataTypeEnum.BOOLEAN
-              ? `score ${parsedLLMOutput.data.score}`
-              : `matches ${parsedLLMOutput.data.matches.join(",")}`
-        }`,
-      );
+      };
     },
   );
+}
+
+function toNormalizedScores(params: {
+  outputResult: EvalOutputResult;
+  scoreName: string;
+}): CodeEvalScoreWithName[] {
+  const { outputResult, scoreName } = params;
+  const baseFields = {
+    name: scoreName,
+    comment: outputResult.reasoning,
+  };
+
+  if (outputResult.dataType === ScoreDataTypeEnum.NUMERIC) {
+    return [
+      {
+        ...baseFields,
+        dataType: ScoreDataTypeEnum.NUMERIC,
+        value: outputResult.score,
+      },
+    ];
+  }
+
+  if (outputResult.dataType === ScoreDataTypeEnum.BOOLEAN) {
+    return [
+      {
+        ...baseFields,
+        dataType: ScoreDataTypeEnum.BOOLEAN,
+        value: outputResult.score ? 1 : 0,
+      },
+    ];
+  }
+
+  return outputResult.matches.map((value) => ({
+    ...baseFields,
+    dataType: ScoreDataTypeEnum.CATEGORICAL,
+    value,
+  }));
+}
+
+export async function executeLLMAsJudgeEvaluation(
+  params: Omit<
+    Parameters<typeof runLLMAsJudgeEvaluation>[0],
+    "deps" | "executionMetadata"
+  > & {
+    environment: string;
+    deps?: EvalExecutionDeps;
+  },
+): Promise<void> {
+  const deps = params.deps ?? createProductionEvalExecutionDeps();
+  const executionMetadata = buildEvalExecutionMetadata({
+    jobExecutionId: params.jobExecutionId,
+    jobConfigurationId: params.job.jobConfigurationId,
+    targetTraceId: params.job.jobInputTraceId,
+    targetObservationId: params.job.jobInputObservationId,
+    targetDatasetItemId: params.job.jobInputDatasetItemId,
+  });
+  const result = await runLLMAsJudgeEvaluation({
+    ...params,
+    deps,
+    executionMetadata,
+  });
+
+  await completeEvalExecution({
+    projectId: params.projectId,
+    jobExecutionId: params.jobExecutionId,
+    traceId: params.job.jobInputTraceId,
+    observationId: params.job.jobInputObservationId,
+    environment: params.environment,
+    deps,
+    result,
+  });
 }
 
 /**
@@ -1070,6 +1188,7 @@ export const evaluate = async ({
   const template = await prisma.evalTemplate.findFirst({
     where: {
       id: config.evalTemplateId,
+      type: EvalTemplateType.LLM_AS_JUDGE,
       OR: [{ projectId: event.projectId }, { projectId: null }],
     },
   });
@@ -1099,17 +1218,50 @@ export const evaluate = async ({
     `Extracted ${extractedVariables.length} variables for job ${event.jobExecutionId}`,
   );
 
+  const environment =
+    getEnvironmentFromVariables(extractedVariables) ??
+    DEFAULT_TRACE_ENVIRONMENT;
+
+  // Final fail-closed loop safeguard: never execute an eval whose target
+  // lives in an internal Langfuse environment, regardless of which scheduling
+  // path created the job. See isEvalTargetEnvironmentAllowed. The environment
+  // is derived from the extracted trace/observation variables; mappings
+  // without any tracing-data variable fall back to the default environment
+  // and rely on the scheduling-time guards.
+  if (!isEvalTargetEnvironmentAllowed(environment)) {
+    logger.warn(
+      "Cancelling eval job targeting an internal Langfuse environment",
+      {
+        jobExecutionId: event.jobExecutionId,
+        projectId: event.projectId,
+        environment,
+        traceId: job.jobInputTraceId,
+      },
+    );
+    recordIncrement(
+      "langfuse.evaluation-execution.internal_target_blocked",
+      1,
+      {
+        source: "trace-eval",
+      },
+    );
+    await prisma.jobExecution.update({
+      where: { id: job.id, projectId: event.projectId },
+      data: { status: JobExecutionStatus.CANCELLED, endTime: new Date() },
+    });
+
+    return;
+  }
+
   // Execute the shared LLM-as-a-judge evaluation
   await executeLLMAsJudgeEvaluation({
     projectId: event.projectId,
     jobExecutionId: event.jobExecutionId,
     job,
     config,
-    template,
+    template: template as EvalTemplateLlmAsAJudge,
     extractedVariables,
-    environment:
-      getEnvironmentFromVariables(extractedVariables) ??
-      DEFAULT_TRACE_ENVIRONMENT,
+    environment,
   });
 };
 
@@ -1130,13 +1282,13 @@ export async function extractVariablesFromTracingData({
   traceTimestamp?: Date;
   datasetItemId?: string;
   datasetItemValidFrom?: Date;
-}): Promise<{ var: string; value: string; environment?: string }[]> {
+}): Promise<ExtractedVariable[]> {
   // Internal cache for this function call to avoid duplicate database lookups.
   // We do not cache dataset items as Postgres is cheaper than ClickHouse.
   const traceCache = new Map<string, TraceDomain | null>();
   const observationCache = new Map<string, Observation | null>();
 
-  const results: { var: string; value: string; environment?: string }[] = [];
+  const results: ExtractedVariable[] = [];
 
   // We run through this list sequentially to make use of caching.
   // The performance improvement by parallel execution should be less than the improvement we gain by caching.
@@ -1200,7 +1352,7 @@ export async function extractVariablesFromTracingData({
 
       results.push({
         var: variable,
-        value: parseDatabaseRowToString(datasetItem, mapping),
+        value: parseDatabaseRowValue(datasetItem, mapping),
       });
       continue;
     }
@@ -1223,11 +1375,11 @@ export async function extractVariablesFromTracingData({
       const traceCacheKey = `${projectId}:${traceId}`;
       let trace = traceCache.get(traceCacheKey);
       if (!traceCache.has(traceCacheKey)) {
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         trace = await getTraceById({
           traceId,
           projectId,
           timestamp: traceTimestamp,
-          clickhouseFeatureTag: "eval-execution",
         });
         traceCache.set(traceCacheKey, trace ?? null);
       }
@@ -1245,7 +1397,7 @@ export async function extractVariablesFromTracingData({
 
       results.push({
         var: variable,
-        value: parseDatabaseRowToString(trace, mapping),
+        value: parseDatabaseRowValue(trace, mapping),
         environment: trace.environment,
       });
       continue;
@@ -1306,7 +1458,7 @@ export async function extractVariablesFromTracingData({
 
       results.push({
         var: variable,
-        value: parseDatabaseRowToString(observation, mapping),
+        value: parseDatabaseRowValue(observation, mapping),
         environment: observation.environment,
       });
       continue;
@@ -1321,10 +1473,13 @@ export async function extractVariablesFromTracingData({
 const snakeToCamel = (s: string) =>
   s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 
-export const parseDatabaseRowToString = (
+// Returns the typed value extracted from a database row. LLM-as-judge
+// stringifies at template-substitution time via `compileEvalPrompt`; code-
+// based evaluators consume the typed value directly.
+export const parseDatabaseRowValue = (
   dbRow: Record<string, unknown>,
   mapping: z.infer<typeof variableMapping>,
-): string => {
+): unknown => {
   // Prisma returns camelCase keys, but selectedColumnId may be snake_case
   const selectedColumn =
     dbRow[mapping.selectedColumnId] ??

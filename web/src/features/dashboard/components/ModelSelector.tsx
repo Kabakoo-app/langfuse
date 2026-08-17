@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-abstracted-overlay-trigger */
 import { Button } from "@/src/components/ui/button";
 import {
   InputCommand,
@@ -16,7 +17,7 @@ import {
 import { useAllModels } from "@/src/features/dashboard/components/hooks";
 import { cn } from "@/src/utils/tailwind";
 import { type FilterState } from "@langfuse/shared";
-import { type ViewVersion } from "@/src/features/query";
+import { type ViewVersion } from "@langfuse/shared/query";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -63,7 +64,7 @@ export const ModelSelectorPopover = ({
                 )}
               />
               <span>
-                <p className="font-semibold">Select All</p>
+                <p className="font-bold">Select All</p>
               </span>
             </InputCommandItem>
             <InputCommandSeparator className="my-1" />

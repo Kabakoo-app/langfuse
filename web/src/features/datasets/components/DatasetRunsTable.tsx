@@ -7,7 +7,7 @@ import { formatIntervalSeconds } from "@/src/utils/dates";
 import { useQueryParams, withDefault, NumberParam } from "use-query-params";
 import { type RouterOutput } from "@/src/utils/types";
 import { useEffect, useMemo, useState } from "react";
-import { compactNumberFormatter, usdFormatter } from "@/src/utils/numbers";
+import { usdFormatter } from "@/src/utils/numbers";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
 import useColumnVisibility from "@/src/features/column-visibility/hooks/useColumnVisibility";
 import { type Prisma, datasetRunsTableColsWithOptions } from "@langfuse/shared";
@@ -27,7 +27,7 @@ import {
 import { Button } from "@/src/components/ui/button";
 import { DeleteDatasetRunButton } from "@/src/features/datasets/components/DeleteDatasetRunButton";
 import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
-import { Checkbox } from "@/src/components/ui/checkbox";
+import { Checkbox } from "@/src/components/design-system/Checkbox/Checkbox";
 import { type RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
 import { joinTableCoreAndMetrics } from "@/src/components/table/utils/joinTableCoreAndMetrics";
@@ -36,7 +36,10 @@ import {
   RESOURCE_METRICS,
   transformAggregatedRunMetricsToChartData,
 } from "@/src/features/dashboard/lib/score-analytics-utils";
-import { compareViewChartDataToDataPoints } from "@/src/features/dashboard/lib/chart-data-adapters";
+import {
+  compareViewChartDataToDataPoints,
+  getCompareViewChartUnit,
+} from "@/src/features/dashboard/lib/chart-data-adapters";
 import { Chart } from "@/src/features/widgets/chart-library/Chart";
 import { CompareViewAdapter } from "@/src/features/scores/adapters";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
@@ -147,7 +150,7 @@ const DatasetRunTableMultiSelectAction = ({
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="mb-4">Please confirm</DialogTitle>
-            <DialogDescription className="text-md p-0">
+            <DialogDescription className="p-0">
               This action cannot be undone and removes all the data associated
               with {selectedRunIds.length} dataset run
               {selectedRunIds.length > 1 ? "s" : ""}.
@@ -361,7 +364,7 @@ export function DatasetRunsTable(props: {
                 }
               }}
               aria-label="Select all"
-              className="opacity-60"
+              variant="muted"
             />
           </div>
         );
@@ -372,7 +375,7 @@ export function DatasetRunsTable(props: {
             checked={row.getIsSelected()}
             onCheckedChange={(value) => row.toggleSelected(!!value)}
             aria-label="Select row"
-            className="opacity-60"
+            variant="muted"
           />
         );
       },
@@ -627,7 +630,7 @@ export function DatasetRunsTable(props: {
                         key={key}
                         className="flex h-full max-w-full min-w-80 flex-col gap-2"
                       >
-                        <span className="shrink-0 text-sm font-medium">
+                        <span className="shrink-0 text-sm font-bold">
                           {title}
                         </span>
                         <NoDataOrLoading
@@ -644,25 +647,12 @@ export function DatasetRunsTable(props: {
                   );
                   const { chartData, chartLabels } = adapter.toChartData();
 
-                  // TODO: remove when revamping the datasets api for it to directly return ms
-                  const valueFormatter =
-                    key === "latency"
-                      ? formatIntervalSeconds
-                      : key === "cost"
-                        ? usdFormatter
-                        : compactNumberFormatter;
+                  const dataPoints = compareViewChartDataToDataPoints(
+                    chartData,
+                    chartLabels,
+                    key,
+                  );
 
-                  const dataPoints =
-                    chartLabels.length === 1
-                      ? chartData.map((d) => ({
-                          time_dimension: d.binLabel,
-                          dimension: chartLabels[0]!,
-                          metric: (d[chartLabels[0]!] as number) ?? 0,
-                        }))
-                      : compareViewChartDataToDataPoints(
-                          chartData,
-                          chartLabels,
-                        );
                   const chartType =
                     chartLabels.length === 1
                       ? "LINE_TIME_SERIES"
@@ -674,7 +664,7 @@ export function DatasetRunsTable(props: {
                         key={key}
                         className="flex h-full max-w-full min-w-80 flex-col gap-2"
                       >
-                        <span className="shrink-0 text-sm font-medium">
+                        <span className="shrink-0 text-sm font-bold">
                           {title}
                         </span>
                         <NoDataOrLoading
@@ -691,7 +681,7 @@ export function DatasetRunsTable(props: {
                       key={key}
                       className="flex h-full max-w-full min-w-80 flex-col gap-2"
                     >
-                      <span className="shrink-0 text-sm font-medium">
+                      <span className="shrink-0 text-sm font-bold">
                         {title}
                       </span>
                       <div className="min-h-[200px] min-w-0 flex-1">
@@ -699,11 +689,10 @@ export function DatasetRunsTable(props: {
                           chartType={chartType}
                           data={dataPoints}
                           rowLimit={Math.max(dataPoints.length, 1)}
-                          chartConfig={{ type: chartType }}
-                          valueFormatter={valueFormatter}
-                          legendPosition={
-                            chartLabels.length > 1 ? "above" : "none"
-                          }
+                          chartConfig={{
+                            type: chartType,
+                            unit: getCompareViewChartUnit(key),
+                          }}
                         />
                       </div>
                     </div>
@@ -719,6 +708,7 @@ export function DatasetRunsTable(props: {
           >
             <DataTableToolbar
               columns={columns}
+              tableName="dataset-runs"
               filterColumnDefinition={transformedFilterOptions}
               filterState={userFilterState}
               setFilterState={setFilterState}
@@ -746,7 +736,7 @@ export function DatasetRunsTable(props: {
               ]}
             />
             <DataTable
-              tableName={"datasetRuns"}
+              tableName="datasetRuns"
               columns={columns}
               data={
                 runs.isPending
@@ -784,6 +774,7 @@ export function DatasetRunsTable(props: {
         <>
           <DataTableToolbar
             columns={columns}
+            tableName="dataset-runs"
             filterColumnDefinition={transformedFilterOptions}
             filterState={userFilterState}
             setFilterState={setFilterState}
@@ -810,7 +801,7 @@ export function DatasetRunsTable(props: {
             ]}
           />
           <DataTable
-            tableName={"datasetRuns"}
+            tableName="datasetRuns"
             columns={columns}
             data={
               runs.isPending

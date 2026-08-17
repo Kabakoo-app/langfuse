@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import dns from "node:dns/promises";
 import {
   validateLlmConnectionBaseURL,
   type LlmBaseUrlValidationWhitelist,
@@ -12,7 +13,14 @@ const originalAllowedIpSegments =
   env.LANGFUSE_LLM_CONNECTION_WHITELISTED_IP_SEGMENTS;
 
 describe("LLM base URL validation", () => {
+  beforeEach(() => {
+    vi.spyOn(dns, "resolve4").mockRejectedValue(new Error("ENOTFOUND"));
+    vi.spyOn(dns, "resolve6").mockRejectedValue(new Error("ENODATA"));
+    vi.spyOn(dns, "lookup").mockRejectedValue(new Error("ENOTFOUND"));
+  });
+
   afterEach(() => {
+    vi.restoreAllMocks();
     (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = originalCloudRegion;
     (env as any).LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST =
       originalAllowedHosts;
@@ -27,6 +35,41 @@ describe("LLM base URL validation", () => {
     await expect(
       validateLlmConnectionBaseURL("http://localhost:11434/v1"),
     ).rejects.toThrow("Blocked hostname detected");
+  });
+
+  it("should reject encoded delimiter userinfo SSRF bypass attempts", async () => {
+    (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = undefined;
+
+    await expect(
+      validateLlmConnectionBaseURL("https://example.com%2F@127.0.0.1/v1"),
+    ).rejects.toThrow(
+      "URL credentials are not allowed. Use authentication headers instead.",
+    );
+  });
+
+  it("should reject URLs with embedded credentials", async () => {
+    (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = undefined;
+
+    await expect(
+      validateLlmConnectionBaseURL("https://user:pass@example.com/v1"),
+    ).rejects.toThrow(
+      "URL credentials are not allowed. Use authentication headers instead.",
+    );
+  });
+
+  it("should reject hostnames that resolve to blocked IPs through local lookup", async () => {
+    (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = undefined;
+    vi.spyOn(dns, "lookup").mockResolvedValue([
+      { address: "127.0.0.1", family: 4 },
+    ]);
+
+    await expect(validateLlmConnectionBaseURL("http://vm/v1")).rejects.toThrow(
+      "Blocked IP address detected",
+    );
+
+    expect(dns.resolve4).toHaveBeenCalledWith("vm");
+    expect(dns.resolve6).toHaveBeenCalledWith("vm");
+    expect(dns.lookup).toHaveBeenCalledWith("vm", { all: true });
   });
 
   it("should allow explicitly allowlisted localhost hosts for self-hosted instances", async () => {
@@ -93,12 +136,40 @@ describe("LLM base URL validation", () => {
     ).resolves.not.toThrow();
   });
 
-  it("should allow unresolved public hostnames by default", async () => {
+  it("should reject hostnames that fail DNS resolution to close the SSRF rebinding gap", async () => {
     (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = undefined;
 
     await expect(
       validateLlmConnectionBaseURL("https://gateway.invalid/v1"),
+    ).rejects.toThrow(/DNS lookup failed/);
+  });
+
+  it("should allow unresolved hostnames when explicitly allowlisted", async () => {
+    (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = undefined;
+
+    const whitelist: LlmBaseUrlValidationWhitelist = {
+      hosts: ["gateway.invalid"],
+      ips: [],
+      ip_ranges: [],
+    };
+
+    await expect(
+      validateLlmConnectionBaseURL("https://gateway.invalid/v1", whitelist),
     ).resolves.not.toThrow();
+  });
+
+  it("should reject unresolved hostnames on Langfuse Cloud regardless of whitelist", async () => {
+    (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = "US";
+
+    const whitelist: LlmBaseUrlValidationWhitelist = {
+      hosts: ["gateway.invalid"],
+      ips: [],
+      ip_ranges: [],
+    };
+
+    await expect(
+      validateLlmConnectionBaseURL("https://gateway.invalid/v1", whitelist),
+    ).rejects.toThrow(/DNS lookup failed/);
   });
 
   it("should reject non-HTTPS URLs on Langfuse Cloud", async () => {

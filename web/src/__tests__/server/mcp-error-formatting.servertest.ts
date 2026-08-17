@@ -1,15 +1,13 @@
-/** @jest-environment node */
-
 // Mock queue operations to avoid Redis dependency in tests
-jest.mock("@langfuse/shared/src/server", () => {
-  const actual = jest.requireActual("@langfuse/shared/src/server");
+vi.mock("@langfuse/shared/src/server", async () => {
+  const actual = await vi.importActual("@langfuse/shared/src/server");
   return {
     ...actual,
     // Mock queue getInstance to return a no-op queue
     EventPropagationQueue: {
       getInstance: () => ({
-        add: jest.fn().mockResolvedValue(undefined),
-        disconnect: jest.fn(),
+        add: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn(),
       }),
     },
   };
@@ -205,18 +203,33 @@ describe("MCP Error Formatting", () => {
         );
       });
 
-      it("should format BaseError as InvalidRequest", () => {
+      it("should format client-side BaseError as InvalidRequest", () => {
         const error = new BaseError(
           "Generic base error",
-          500,
+          400,
           "Generic base error",
           true,
         );
         const mcpError = formatErrorForUser(error);
 
         expect(mcpError.code).toBe(ErrorCode.InvalidRequest);
-        // BaseError is a base class - message handling may vary
-        expect(mcpError).toBeInstanceOf(McpError);
+        expect(mcpError.message).toContain("Generic base error");
+      });
+
+      it("should sanitize server-side BaseError as InternalError", () => {
+        const error = new BaseError(
+          "Database connection failed",
+          500,
+          "Database connection failed",
+          true,
+        );
+        const mcpError = formatErrorForUser(error);
+
+        expect(mcpError.code).toBe(ErrorCode.InternalError);
+        expect(mcpError.message).toContain(
+          "An internal server error occurred.",
+        );
+        expect(mcpError.message).not.toContain("Database");
       });
     });
 

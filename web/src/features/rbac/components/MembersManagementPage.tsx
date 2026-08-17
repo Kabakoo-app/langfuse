@@ -35,8 +35,7 @@ import { Role } from "@langfuse/shared";
 import { Trash, UserX } from "lucide-react";
 import { useSession } from "next-auth/react";
 
-type UserFromQuery =
-  RouterOutput["members"]["allUsersAdmin"]["users"][number];
+type UserFromQuery = RouterOutput["members"]["allUsersAdmin"]["users"][number];
 
 type UserRow = {
   user: { image: string | null; name: string | null };
@@ -57,8 +56,8 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
 
   const mutUpdateRole = api.members.updateOrgMembership.useMutation({
     onSuccess: (data) => {
-      void utils.members.invalidate();
-      if (data.userId === session.data?.user?.id) void session.update();
+      utils.members.invalidate();
+      if (data.userId === session.data?.user?.id) session.update();
       showSuccessToast({
         title: "Saved",
         description: "Role updated.",
@@ -69,7 +68,7 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
 
   const mutRemoveFromOrg = api.members.deleteMembership.useMutation({
     onSuccess: () => {
-      void utils.members.invalidate();
+      utils.members.invalidate();
       showSuccessToast({
         title: "Removed",
         description: "User removed from organization.",
@@ -80,7 +79,7 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
 
   const mutDeleteUser = api.members.deleteUser.useMutation({
     onSuccess: () => {
-      void utils.members.invalidate();
+      utils.members.invalidate();
       showSuccessToast({
         title: "Deleted",
         description: "User account permanently deleted.",
@@ -240,8 +239,10 @@ export function MembersManagementPage({ orgId }: { orgId: string }) {
     },
   ];
 
-  const [columnVisibility, setColumnVisibility] =
-    useColumnVisibility<UserRow>("membersManagementVisibility", columns);
+  const [columnVisibility, setColumnVisibility] = useColumnVisibility<UserRow>(
+    "membersManagementVisibility",
+    columns,
+  );
 
   const [columnOrder, setColumnOrder] = useColumnOrder<UserRow>(
     "membersManagementOrder",

@@ -21,7 +21,7 @@ Testing
 API Reference
 
 - Add to `fern` including `docs` attributes
-- Build with `fern generate --api server` and `fern generate --api client`, then commit the changes to the API reference
+- Export with `pnpm run openapi:export`, then commit the changes to the API reference
 
 SDKs
 

@@ -43,14 +43,22 @@ const cloudRegions = [
   },
 ] as const;
 
+export type CloudRegion = (typeof cloudRegions)[number];
+
+export type CloudRegionName = CloudRegion["name"];
+
+type ProductionCloudRegionName = Extract<
+  CloudRegion,
+  { isProduction: true }
+>["name"];
+
 const availableRegionsByCurrentRegion = {
   STAGING: ["STAGING"],
   DEV: ["DEV"],
-  JP: ["JP", "US", "EU", "HIPAA"],
-  default: ["US", "EU", "HIPAA"],
+  default: ["US", "EU", "JP", "HIPAA"],
 } as const;
 
-const getCloudRegion = (name: (typeof cloudRegions)[number]["name"]) => {
+const getCloudRegion = (name: CloudRegionName) => {
   const region = cloudRegions.find((region) => region.name === name);
   if (!region) {
     throw new Error(`Unknown cloud region: ${name}`);
@@ -68,14 +76,25 @@ export const getAvailableCloudRegionOptions = (currentRegion?: string) => {
     return availableRegionsByCurrentRegion.DEV.map(getCloudRegion);
   }
 
-  if (currentRegion === "JP") {
-    return availableRegionsByCurrentRegion.JP.map(getCloudRegion);
-  }
-
   return availableRegionsByCurrentRegion.default.map(getCloudRegion);
 };
 
-export const isRegionProduction = (regionName: string): boolean => {
-  const region = cloudRegions.find((r) => r.name === regionName);
-  return region ? region.isProduction : false;
+export const getCloudRegionAuthUrl = (
+  rootUrl: string,
+  email?: string | null,
+): string => {
+  const authUrl = new URL("/auth/sign-in", rootUrl);
+
+  if (email) {
+    authUrl.searchParams.set("email", email);
+  }
+
+  return authUrl.toString();
 };
+
+export const isRegionProduction = (
+  regionName: CloudRegionName,
+): regionName is ProductionCloudRegionName =>
+  cloudRegions.some(
+    (region) => region.name === regionName && region.isProduction,
+  );

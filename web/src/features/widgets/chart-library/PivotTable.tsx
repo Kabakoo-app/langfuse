@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-style-props */
 /**
  * @fileoverview PivotTable Chart Component
  *
@@ -41,7 +42,7 @@ import {
   DEFAULT_ROW_LIMIT,
 } from "@/src/features/widgets/utils/pivot-table-utils";
 import { type ChartProps } from "@/src/features/widgets/chart-library/chart-props";
-import { numberFormatter } from "@/src/utils/numbers";
+import { valueFormatter } from "@/src/features/widgets/chart-library/utils";
 import { formatMetricName } from "@/src/features/widgets/utils";
 import { type OrderByState } from "@langfuse/shared";
 
@@ -77,7 +78,9 @@ const StaticHeader: React.FC<{
   return (
     <TableHead className={cn("p-1", className)}>
       <div className="flex items-center select-none">
-        <span className="truncate">{label}</span>
+        <span className="truncate" title={label}>
+          {label}
+        </span>
       </div>
     </TableHead>
   );
@@ -117,7 +120,9 @@ const SortableHeader: React.FC<{
           rightAlign ? "justify-end" : "justify-start",
         )}
       >
-        <span className="truncate">{label}</span>
+        <span className="truncate" title={label}>
+          {label}
+        </span>
         {isSorted && (
           <span
             className="ml-1"
@@ -145,7 +150,8 @@ const SortableHeader: React.FC<{
 const PivotTableRowComponent: React.FC<{
   row: PivotTableRow;
   metrics: string[];
-}> = ({ row, metrics }) => {
+  units?: (string | undefined)[];
+}> = ({ row, metrics, units }) => {
   return (
     <TableRow
       className={cn(
@@ -162,7 +168,7 @@ const PivotTableRowComponent: React.FC<{
           row.level === 1 && "pl-6", // 1.5rem indentation for level 1
           row.level === 2 && "pl-10", // 2.5rem indentation for level 2
           // Bold styling for subtotal and total rows
-          (row.isSubtotal || row.isTotal) && "font-semibold",
+          (row.isSubtotal || row.isTotal) && "font-bold",
         )}
         style={{
           // Fallback for levels beyond 2 using inline styles
@@ -174,35 +180,20 @@ const PivotTableRowComponent: React.FC<{
       </TableCell>
 
       {/* Metric columns */}
-      {metrics.map((metric) => (
+      {metrics.map((metric, i) => (
         <TableCell
           key={metric}
           className={cn(
             "p-2 text-right align-middle tabular-nums",
-            (row.isSubtotal || row.isTotal) && "font-semibold",
+            (row.isSubtotal || row.isTotal) && "font-bold",
           )}
         >
-          {formatMetricValue(row.values[metric])}
+          {valueFormatter(row.values[metric], units?.[i])}
         </TableCell>
       ))}
     </TableRow>
   );
 };
-
-/**
- * Formats metric values for display in the table
- * Handles numbers and strings with appropriate formatting
- *
- * @param value - The metric value to format
- * @returns Formatted string for display
- */
-function formatMetricValue(value: number | string): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return numberFormatter(value, 2).replace(/\.00$/, "");
-}
 
 /**
  * Formats metric names for column headers
@@ -232,6 +223,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({
   onSortChange,
   isLoading = false,
 }) => {
+  const units = config?.units;
   // Transform chart data into pivot table structure
   const pivotTableRows = useMemo(() => {
     if (!data || data.length === 0) {
@@ -391,7 +383,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({
                   ? config.dimensions.map(formatColumnHeader).join(" / ") // Show all dimensions
                   : "Dimension"
               }
-              className="p-2 text-left font-medium first:pl-2"
+              className="p-2 text-left font-bold first:pl-2"
             />
 
             {/* Metric column headers */}
@@ -402,7 +394,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({
                 label={formatColumnHeader(metric)}
                 sortState={sortState}
                 onSort={handleSort}
-                className="p-2 font-medium"
+                className="p-2 font-bold"
                 rightAlign={true}
               />
             ))}
@@ -411,12 +403,15 @@ export const PivotTable: React.FC<PivotTableProps> = ({
 
         <TableBody>
           {sortedRows.map((row) => (
-            <PivotTableRowComponent key={row.id} row={row} metrics={metrics} />
+            <PivotTableRowComponent
+              key={row.id}
+              row={row}
+              metrics={metrics}
+              units={units}
+            />
           ))}
         </TableBody>
       </Table>
     </div>
   );
 };
-
-export default PivotTable;

@@ -8,7 +8,14 @@ import { StringNoHTML } from "@langfuse/shared";
 import { Role, Prisma } from "@langfuse/shared/src/db";
 import type { PrismaClient } from "@langfuse/shared/src/db";
 import { canToggleV4 } from "@/src/features/events/lib/v4Rollout";
+import { V4_PREVIEW_LABEL } from "@/src/features/events/lib/v4PreviewLabel";
 import { env } from "@/src/env.mjs";
+import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
+import {
+  getFeaturePreviewOptOutFlag,
+  receivesFeaturePreviewsByDefault,
+} from "@/src/features/feature-flags/utils";
+import { featurePreviewFlags } from "@/src/features/feature-flags/available-flags";
 
 const updateDisplayNameSchema = z.object({
   name: StringNoHTML.min(1, "Name cannot be empty").max(
@@ -95,12 +102,75 @@ export const userAccountRouter = createTRPCRouter({
       };
     }),
 
+  setFeaturePreviewEnabled: authenticatedProcedure
+    .input(
+      z.object({
+        // Allowlist of user-toggleable Feature Preview flags (the Feature
+        // Preview modal). Keep in sync with the modal's preview registry.
+        flag: z.enum(featurePreviewFlags),
+        enabled: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.session.user.id;
+
+      const canEnableFeaturePreviews =
+        Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION) ||
+        ctx.session.user.v4BetaEnabled === true;
+
+      if (input.enabled && !canEnableFeaturePreviews) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Feature previews require ${V4_PREVIEW_LABEL} on self-hosted deployments.`,
+        });
+      }
+
+      // Serializable transaction: the read-modify-write of the featureFlags
+      // array is not atomic on its own, so two parallel toggles of DIFFERENT
+      // flags from one tab (the modal only disables the in-flight row) would
+      // last-write-wins and silently drop one. Mirrors the `delete` mutation.
+      await ctx.prisma.$transaction(
+        async (tx) => {
+          const currentUser = await tx.user.findUnique({
+            where: { id: userId },
+            select: { featureFlags: true, email: true },
+          });
+          if (!currentUser) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "User not found",
+            });
+          }
+          const optOutFlag = getFeaturePreviewOptOutFlag(input.flag);
+          const featureFlagsWithoutOverride = currentUser.featureFlags.filter(
+            (flag) => flag !== input.flag && flag !== optOutFlag,
+          );
+          const nextFeatureFlags = input.enabled
+            ? [...featureFlagsWithoutOverride, input.flag]
+            : receivesFeaturePreviewsByDefault(currentUser.email)
+              ? [...featureFlagsWithoutOverride, optOutFlag]
+              : featureFlagsWithoutOverride;
+          await tx.user.update({
+            where: { id: userId },
+            data: { featureFlags: { set: nextFeatureFlags } },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      return {
+        success: true,
+        flag: input.flag,
+        enabled: input.enabled,
+      };
+    }),
+
   delete: authenticatedProcedure.mutation(async ({ ctx }) => {
     const userId = ctx.session.user.id;
 
     // Wrap check and delete in a serializable transaction to prevent race conditions
     // when organization owners are removed concurrently
-    await ctx.prisma.$transaction(
+    const sfdcRemovals = await ctx.prisma.$transaction(
       async (tx) => {
         // Verify user can be deleted
         const { canDelete } = await checkUserCanBeDeleted(userId, tx);
@@ -113,14 +183,40 @@ export const userAccountRouter = createTRPCRouter({
           });
         }
 
+        // Capture org memberships before the cascade delete wipes them; they
+        // are synced to SFDC only after the transaction commits. NONE roles
+        // hold no SFDC org-member bridge, so there is nothing to remove.
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { email: true },
+        });
+        const memberships = await tx.organizationMembership.findMany({
+          where: { userId, role: { not: Role.NONE } },
+          select: { orgId: true },
+        });
+
         // Delete the user (cascade will handle related records)
         await tx.user.delete({
           where: { id: userId },
         });
+
+        return memberships.map(({ orgId }) => ({
+          orgId,
+          email: user?.email,
+        }));
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       },
+    );
+
+    // SFDC: remove every org-member bridge the cascade just deleted. After
+    // commit so a rolled-back delete never desyncs SFDC; removeUser never
+    // throws, so per-org failures cannot fail the mutation.
+    await Promise.all(
+      sfdcRemovals.map(({ orgId, email }) =>
+        getSfdcService()?.removeUser({ orgId, userId, email }),
+      ),
     );
 
     return {
@@ -131,13 +227,58 @@ export const userAccountRouter = createTRPCRouter({
   setV4BetaEnabled: authenticatedProcedure
     .input(z.object({ enabled: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
-      const isCloudDeployment = Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION);
+      // Mirror the V4 preview gating in the auth.ts session callback so the
+      // write path agrees with what the session reports. Availability is
+      // driven by the write mode.
+      const v4WriteMode = env.LANGFUSE_MIGRATION_V4_WRITE_MODE;
+      const isLangfuseCloud = Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION);
 
-      if (!isCloudDeployment) {
+      // In events_only mode the preview is mandatory and cannot be toggled off:
+      // the legacy tables it would fall back to are no longer written. Ignore
+      // the requested value so a stale client can't flip a user into broken
+      // reads, and keep the returned session shape consistent with auth.ts.
+      if (v4WriteMode === "events_only") {
+        return {
+          success: true,
+          v4BetaEnabled: true,
+          canToggleV4: false,
+        };
+      }
+
+      // In legacy mode the events tables are not written, so the preview has
+      // nothing correct to read — it stays off and cannot be toggled.
+      if (v4WriteMode === "legacy") {
         return {
           success: true,
           v4BetaEnabled: false,
           canToggleV4: false,
+        };
+      }
+
+      // dual mode. On Cloud the date-based rollout applies (handled below) —
+      // users auto-enabled by the rollout are locked on and cannot toggle off.
+      // Self-hosted deployments are opt-in, but only once they have also set
+      // ALLOW_PREVIEW_OPT_IN=true; otherwise feature paths still gated on that
+      // flag would fall back to legacy tables while the core UI reads events,
+      // so the toggle is not offered (mirrors the auth.ts session callback).
+      if (!isLangfuseCloud) {
+        if (env.LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN !== "true") {
+          return {
+            success: true,
+            v4BetaEnabled: false,
+            canToggleV4: false,
+          };
+        }
+
+        await ctx.prisma.user.update({
+          where: { id: ctx.session.user.id },
+          data: { v4BetaEnabled: input.enabled },
+        });
+
+        return {
+          success: true,
+          v4BetaEnabled: input.enabled,
+          canToggleV4: true,
         };
       }
 
@@ -166,18 +307,21 @@ export const userAccountRouter = createTRPCRouter({
         });
       }
 
-      const userCanToggleV4 = canToggleV4({
-        userCreatedAt: userRolloutState.createdAt,
-        organizations: userRolloutState.organizationMemberships.map(
-          (membership) => ({
-            id: membership.organization.id,
-            createdAt: membership.organization.createdAt,
-          }),
-        ),
-        excludedOrganizationIds: env.NEXT_PUBLIC_DEMO_ORG_ID
-          ? [env.NEXT_PUBLIC_DEMO_ORG_ID]
-          : [],
-      });
+      const userCanToggleV4 = canToggleV4(
+        {
+          userCreatedAt: userRolloutState.createdAt,
+          organizations: userRolloutState.organizationMemberships.map(
+            (membership) => ({
+              id: membership.organization.id,
+              createdAt: membership.organization.createdAt,
+            }),
+          ),
+          excludedOrganizationIds: env.NEXT_PUBLIC_DEMO_ORG_ID
+            ? [env.NEXT_PUBLIC_DEMO_ORG_ID]
+            : [],
+        },
+        { isLangfuseCloudAdmin: ctx.session.user.admin === true },
+      );
 
       if (!userCanToggleV4) {
         return {

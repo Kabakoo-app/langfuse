@@ -110,7 +110,15 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
 
   clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:25.12
+    # Deliberately ahead of upstream's 25.12 pin: this instance was actually
+    # running an untagged (":latest"-tracking) 26.x build before upstream
+    # introduced an explicit version pin. Reverting to 25.12 downgrades
+    # ClickHouse below what wrote the on-disk parts, and 25.12 can't parse a
+    # newer MergeTreeSerializationInfo field those parts contain (it treats
+    # the whole part as corrupted instead of just ignoring the unknown
+    # field). Do not lower this without confirming it can still read every
+    # existing part.
+    image: docker.io/clickhouse/clickhouse-server:26.3.9.8
     restart: always
     # S3-backed merge-tree parts can take longer than Docker's 10s default to
     # flush/finish a merge; without this, restarts can SIGKILL mid-write and

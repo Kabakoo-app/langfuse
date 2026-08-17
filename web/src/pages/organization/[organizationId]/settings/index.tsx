@@ -18,6 +18,8 @@ import AIFeatureSwitch from "@/src/features/organizations/components/AIFeatureSw
 import { useIsCloudBillingAvailable } from "@/src/ee/features/billing/utils/isCloudBilling";
 import { env } from "@/src/env.mjs";
 import { OrgAuditLogsSettingsPage } from "@/src/ee/features/audit-log-viewer/OrgAuditLogsSettingsPage";
+import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
+import { useV4UpgradeUiFlag } from "@/src/features/v4-migration/useV4UpgradeUiEnabled";
 
 type OrganizationSettingsPage = {
   title: string;
@@ -29,11 +31,18 @@ type OrganizationSettingsPage = {
 export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
   const { organization } = useQueryProjectOrOrganization();
   const showBillingSettings = useHasEntitlement("cloud-billing");
-  const showOrgApiKeySettings = useHasEntitlement("admin-api");
+  const hasAdminApiEntitlement = useHasEntitlement("admin-api");
+  const hasOrgApiKeyAccess = useHasOrganizationAccess({
+    organizationId: organization?.id,
+    scope: "organization:CRUD_apiKeys",
+  });
+  const showOrgApiKeySettings = hasAdminApiEntitlement && hasOrgApiKeyAccess;
   const showAuditLogs = useHasEntitlement("audit-logs");
   const plan = usePlan();
   const isLangfuseCloud = isCloudPlan(plan) ?? false;
   const isCloudBillingAvailable = useIsCloudBillingAvailable();
+  const showV4Migration = useV4UpgradeUiFlag();
+
   if (!organization) return [];
 
   return getOrganizationSettingsPages({
@@ -42,6 +51,7 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
     showOrgApiKeySettings,
     showAuditLogs,
     isLangfuseCloud,
+    showV4Migration,
   });
 }
 
@@ -51,12 +61,14 @@ export const getOrganizationSettingsPages = ({
   showOrgApiKeySettings,
   showAuditLogs,
   isLangfuseCloud,
+  showV4Migration,
 }: {
   organization: { id: string; name: string; metadata: Record<string, unknown> };
   showBillingSettings: boolean;
   showOrgApiKeySettings: boolean;
   showAuditLogs: boolean;
   isLangfuseCloud: boolean;
+  showV4Migration: boolean;
 }): OrganizationSettingsPage[] => [
   {
     title: "General",
@@ -126,14 +138,31 @@ export const getOrganizationSettingsPages = ({
   {
     title: "SSO",
     slug: "sso",
-    cmdKKeywords: ["sso", "login", "auth", "okta", "saml", "azure"],
-    content: <SSOSettings />,
+    cmdKKeywords: [
+      "sso",
+      "login",
+      "auth",
+      "okta",
+      "saml",
+      "azure",
+      "domain",
+      "dns",
+      "txt",
+      "verify",
+    ],
+    content: <SSOSettings orgId={organization.id} />,
     show: isLangfuseCloud,
   },
   {
     title: "Projects",
     slug: "projects",
     href: `/organization/${organization.id}`,
+  },
+  {
+    title: "v4 Migration",
+    slug: "v4-migration",
+    href: "/v4-migration",
+    show: showV4Migration,
   },
 ];
 

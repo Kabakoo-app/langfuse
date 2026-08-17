@@ -1,4 +1,3 @@
-/** @jest-environment node */
 // Set environment variables before imports to ensure VERSIONED mode
 process.env.LANGFUSE_DATASET_SERVICE_READ_FROM_VERSIONED_IMPLEMENTATION =
   "true";
@@ -44,16 +43,23 @@ async function prepare() {
               role: "ADMIN",
               retentionDays: 30,
               deletedAt: null,
+              hasTraces: false,
               name: project.name,
               metadata: {},
+              createdAt: new Date().toISOString(),
             },
           ],
           aiFeaturesEnabled: false,
+          aiTelemetryEnabled: true,
         },
       ],
       featureFlags: {
+        searchBar: false,
         excludeClickhouseRead: false,
         templateFlag: true,
+        v4BetaToggleVisible: false,
+        observationEvals: false,
+        experimentsV4Enabled: false,
       },
       admin: true,
     },

@@ -7,7 +7,7 @@ import {
   withDefault,
 } from "use-query-params";
 import type { z } from "zod";
-import { OpenAiMessageView } from "@/src/components/trace2/components/IOPreview/components/ChatMessageList";
+import { ChatMessageList } from "@/src/features/traces";
 import {
   TabsBar,
   TabsBarList,
@@ -33,7 +33,9 @@ import {
 import { PromptHistoryNode } from "./prompt-history";
 import { JumpToPlaygroundButton } from "@/src/features/playground/page/components/JumpToPlaygroundButton";
 import { ChatMlArraySchema } from "@/src/components/schemas/ChatMlSchema";
-import Generations from "@/src/components/table/use-cases/observations";
+import LegacyGenerations from "@/src/components/table/use-cases/observations";
+import EventsTable from "@/src/features/events/components/EventsTable";
+import { useV4Beta } from "@/src/features/events/hooks/useV4Beta";
 import { FlaskConical, MoreVertical, Plus } from "lucide-react";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { Button } from "@/src/components/ui/button";
@@ -112,6 +114,7 @@ export const PromptDetail = ({
   const projectId = useProjectIdFromURL();
   const capture = usePostHogClientCapture();
   const router = useRouter();
+  const { isBetaEnabled } = useV4Beta();
 
   const promptName =
     promptNameProp ||
@@ -145,13 +148,21 @@ export const PromptDetail = ({
     projectId,
     scope: "promptExperiments:CUD",
   });
-  const promptHistory = api.prompts.allVersions.useQuery(
-    {
+  const hasCommentReadAccess = useHasProjectAccess({
+    projectId,
+    scope: "comments:read",
+  });
+  const promptHistoryInput = useMemo(
+    () => ({
       name: promptName,
       projectId: projectId as string, // Typecast as query is enabled only when projectId is present
-    },
-    { enabled: Boolean(projectId) },
+      includeCommentCounts: hasCommentReadAccess,
+    }),
+    [hasCommentReadAccess, projectId, promptName],
   );
+  const promptHistory = api.prompts.allVersions.useQuery(promptHistoryInput, {
+    enabled: Boolean(projectId),
+  });
   const prompt = currentPromptVersion
     ? promptHistory.data?.promptVersions.find(
         (prompt) => prompt.version === currentPromptVersion,
@@ -169,6 +180,7 @@ export const PromptDetail = ({
     },
     {
       enabled: Boolean(projectId) && Boolean(prompt?.id),
+      meta: { silentHttpCodes: [404] },
     },
   );
 
@@ -198,8 +210,8 @@ export const PromptDetail = ({
   }) => {
     setIsCreateExperimentDialogOpen(false);
     if (!data) return;
-    void utils.datasets.baseRunDataByDatasetId.invalidate();
-    void utils.datasets.runsByDatasetId.invalidate();
+    utils.datasets.baseRunDataByDatasetId.invalidate();
+    utils.datasets.runsByDatasetId.invalidate();
     showSuccessToast({
       title: "Experiment triggered successfully",
       description: "Waiting for experiment to complete...",
@@ -230,27 +242,7 @@ export const PromptDetail = ({
     ).data?.tags ?? []
   ).map((t) => t.value);
 
-  const promptIds = useMemo(
-    () => promptHistory.data?.promptVersions.map((p) => p.id) ?? [],
-    [promptHistory.data?.promptVersions],
-  );
-
-  const commentCounts = api.comments.getCountByObjectIds.useQuery(
-    {
-      projectId: projectId as string,
-      objectType: "PROMPT",
-      objectIds: promptIds,
-    },
-    {
-      enabled: Boolean(projectId) && promptIds.length > 0,
-      trpc: {
-        context: {
-          skipBatch: true,
-        },
-      },
-      refetchOnMount: false, // prevents refetching loops
-    },
-  );
+  const commentCounts = promptHistory.data?.commentCounts;
 
   const { pythonCode, jsCode } = useMemo(() => {
     if (!prompt?.id) return { pythonCode: null, jsCode: null };
@@ -315,6 +307,7 @@ export const PromptDetail = ({
             availableTags={allTags}
             projectId={projectId as string}
             promptName={prompt.name}
+            includeCommentCounts={promptHistoryInput.includeCommentCounts}
           />
         ),
         actionButtonsRight: (
@@ -340,12 +333,12 @@ export const PromptDetail = ({
       }}
     >
       <div className="grid flex-1 grid-cols-3 gap-4 overflow-hidden px-3 md:grid-cols-4">
-        <Command className="flex flex-col gap-2 overflow-y-auto rounded-none border-r pr-3 font-medium focus:ring-0 focus:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-hidden data-focus:ring-0">
+        <Command className="flex flex-col gap-2 overflow-y-auto rounded-none border-r pr-3 font-bold focus:ring-0 focus:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-hidden data-focus:ring-0">
           <div className="mt-3 flex items-center justify-between">
             <CommandInput
               showBorder={false}
               placeholder="Search..."
-              className="text-muted-foreground h-fit border-none py-0 text-sm font-light focus:ring-0"
+              className="text-muted-foreground h-fit border-none py-0 text-sm focus:ring-0"
             />
 
             <Button
@@ -371,7 +364,7 @@ export const PromptDetail = ({
                 setCurrentPromptVersion(version);
                 setCurrentPromptLabel(null);
               }}
-              commentCounts={commentCounts.data}
+              commentCounts={commentCounts}
             />
           </div>
         </Command>
@@ -392,7 +385,7 @@ export const PromptDetail = ({
                         >
                           # {prompt.version}
                         </Badge>
-                        <span className="mb-0 line-clamp-2 min-w-0 text-lg font-medium break-all md:break-normal md:wrap-break-word">
+                        <span className="mb-0 line-clamp-2 min-w-0 text-lg font-bold break-all md:break-normal md:wrap-break-word">
                           {prompt.commitMessage ?? prompt.name}
                         </span>
                       </div>
@@ -454,8 +447,11 @@ export const PromptDetail = ({
                   projectId={projectId as string}
                   objectId={prompt.id}
                   objectType="PROMPT"
-                  count={getNumberFromMap(commentCounts?.data, prompt.id)}
+                  count={getNumberFromMap(commentCounts, prompt.id)}
                   variant="outline"
+                  onCommentChange={() =>
+                    utils.prompts.allVersions.invalidate(promptHistoryInput)
+                  }
                 />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -497,12 +493,22 @@ export const PromptDetail = ({
               className="mt-0 mb-2 flex max-h-full min-h-0 flex-1 flex-col overflow-hidden"
             >
               <div className="flex h-full flex-1 flex-col overflow-hidden">
-                <Generations
-                  projectId={prompt.projectId}
-                  promptName={prompt.name}
-                  promptVersion={prompt.version}
-                  omittedFilter={["promptName"]}
-                />
+                {isBetaEnabled ? (
+                  <EventsTable
+                    projectId={prompt.projectId}
+                    promptName={prompt.name}
+                    promptVersion={prompt.version}
+                    omittedFilter={["promptName"]}
+                    isolateTableState
+                  />
+                ) : (
+                  <LegacyGenerations
+                    projectId={prompt.projectId}
+                    promptName={prompt.name}
+                    promptVersion={prompt.version}
+                    omittedFilter={["promptName"]}
+                  />
+                )}
               </div>
             </TabsBarContent>
             <TabsBarContent
@@ -538,7 +544,7 @@ export const PromptDetail = ({
                 <PromptReferenceProvider projectId={projectId}>
                   {prompt.type === PromptType.Chat && chatMessages ? (
                     <div className="w-full">
-                      <OpenAiMessageView
+                      <ChatMessageList
                         messages={chatMessages}
                         shouldRenderMarkdown={true}
                         currentView="pretty"

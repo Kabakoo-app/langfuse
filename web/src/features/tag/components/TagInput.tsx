@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-style-props */
 import React from "react";
 import { cn } from "@/src/utils/tailwind";
 import { X } from "lucide-react";
@@ -14,7 +15,7 @@ type TagInputProps = React.ComponentPropsWithoutRef<
 };
 
 export const TagInput = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Input>,
+  React.ComponentRef<typeof CommandPrimitive.Input>,
   TagInputProps
 >(
   (

@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-abstracted-overlay-trigger */
 import { Button } from "@/src/components/ui/button";
 import { api } from "@/src/utils/api";
 import { useState } from "react";
@@ -26,7 +27,7 @@ export function RetryBackgroundMigration({
   const mutRetryBackgroundMigration =
     api.backgroundMigrations.retry.useMutation({
       onSuccess: () => {
-        void utils.backgroundMigrations.invalidate();
+        utils.backgroundMigrations.invalidate();
         toast.success("Migration scheduled for retry");
         setIsOpen(false);
         setAdminApiKey("");
@@ -63,16 +64,14 @@ export function RetryBackgroundMigration({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-96">
-        <h2 className="text-md mb-3 font-semibold">
-          Retry Background Migration
-        </h2>
+        <h2 className="mb-3 font-bold">Retry Background Migration</h2>
         <p className="mb-4 text-sm">
           This action schedules the migration for retry. Restart the worker
           containers to re-initiate the migration.
         </p>
 
         <div className="mb-4">
-          <Label htmlFor="admin-api-key" className="text-sm font-medium">
+          <Label htmlFor="admin-api-key" className="text-sm font-bold">
             Admin API Key
           </Label>
           <Input
@@ -98,7 +97,7 @@ export function RetryBackgroundMigration({
             >
               Docs
             </a>
-            {")."}
+            ).
           </p>
         </div>
 

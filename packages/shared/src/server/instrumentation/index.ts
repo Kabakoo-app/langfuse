@@ -5,6 +5,7 @@ import {
 import * as opentelemetry from "@opentelemetry/api";
 import * as dd from "dd-trace";
 import { env } from "../../env";
+import { API_KEY_CACHE_KEY_PREFIX } from "../auth/apiKeyCache";
 import { logger } from "../logger";
 
 // type CallbackFn<T> = () => T;
@@ -25,8 +26,8 @@ export function ioredisRequestHook(
     return;
   }
   const args = [...cmdArgs].map(String);
-  // Redact API key cache values: SET [prefix:]api-key:{hash} <json>
-  if (args[0]?.includes("api-key:")) {
+  // Redact API key cache values.
+  if (args[0]?.includes(API_KEY_CACHE_KEY_PREFIX)) {
     for (let i = 1; i < args.length; i++) {
       args[i] = "[REDACTED]";
     }
@@ -50,12 +51,18 @@ export type SpanCtx = {
 
 type AsyncCallbackFn<T> = (span: opentelemetry.Span) => Promise<T>;
 
+/** instrumentAsync runs an async callback inside a fresh OTel span. */
 export async function instrumentAsync<T>(
   ctx: SpanCtx,
   callback: AsyncCallbackFn<T>,
 ): Promise<T> {
   const activeContext = ctx.startNewTrace
-    ? opentelemetry.ROOT_CONTEXT
+    ? // Sever the parent trace but carry baggage onto the new root.
+      opentelemetry.propagation.setBaggage(
+        opentelemetry.ROOT_CONTEXT,
+        opentelemetry.propagation.getBaggage(opentelemetry.context.active()) ??
+          opentelemetry.propagation.createBaggage(),
+      )
     : ctx.traceContext
       ? opentelemetry.propagation.extract(
           opentelemetry.context.active(),
@@ -94,12 +101,18 @@ export async function instrumentAsync<T>(
 
 type SyncCallbackFn<T> = (span: opentelemetry.Span) => T;
 
+/** instrumentSync runs a callback inside a fresh OTel span. */
 export function instrumentSync<T>(
   ctx: SpanCtx,
   callback: SyncCallbackFn<T>,
 ): T {
   const activeContext = ctx.startNewTrace
-    ? opentelemetry.ROOT_CONTEXT
+    ? // Sever the parent trace but carry baggage onto the new root.
+      opentelemetry.propagation.setBaggage(
+        opentelemetry.ROOT_CONTEXT,
+        opentelemetry.propagation.getBaggage(opentelemetry.context.active()) ??
+          opentelemetry.propagation.createBaggage(),
+      )
     : ctx.traceContext
       ? opentelemetry.propagation.extract(
           opentelemetry.context.active(),
@@ -137,6 +150,12 @@ export function instrumentSync<T>(
 }
 
 export const getCurrentSpan = () => opentelemetry.trace.getActiveSpan();
+
+export const addTagsToCurrentSpan = (
+  attributes: Parameters<opentelemetry.Span["setAttributes"]>[0],
+) => {
+  getCurrentSpan()?.setAttributes(attributes);
+};
 
 export const traceException = (
   ex: unknown,
@@ -191,9 +210,10 @@ export const addUserToSpan = (
   attributes: {
     userId?: string;
     projectId?: string;
-    email?: string;
     orgId?: string;
     plan?: string;
+    apiKeyId?: string;
+    publicKey?: string;
   },
   span?: opentelemetry.Span,
 ) => {
@@ -214,12 +234,6 @@ export const addUserToSpan = (
     });
     activeSpan.setAttribute("user.id", attributes.userId);
   }
-  if (attributes.email) {
-    baggage = baggage.setEntry("user.email", {
-      value: attributes.email,
-    });
-    activeSpan.setAttribute("user.email", attributes.email);
-  }
   if (attributes.projectId) {
     baggage = baggage.setEntry("langfuse.project.id", {
       value: attributes.projectId,
@@ -237,6 +251,21 @@ export const addUserToSpan = (
       value: attributes.plan,
     });
     activeSpan.setAttribute("langfuse.org.plan", attributes.plan);
+  }
+  if (attributes.apiKeyId) {
+    baggage = baggage.setEntry("langfuse.api_key.id", {
+      value: attributes.apiKeyId,
+    });
+    activeSpan.setAttribute("langfuse.api_key.id", attributes.apiKeyId);
+  }
+  if (attributes.publicKey) {
+    baggage = baggage.setEntry("langfuse.api_key.public_key", {
+      value: attributes.publicKey,
+    });
+    activeSpan.setAttribute(
+      "langfuse.api_key.public_key",
+      attributes.publicKey,
+    );
   }
 
   return opentelemetry.propagation.setBaggage(ctx, baggage);
@@ -290,7 +319,7 @@ const flushMetricsToCloudWatch = () => {
 
 // Metrics ending with these suffixes have their tags flattened into the
 // CloudWatch metric name (excluding "unit"). Other metrics are unaffected.
-const CW_TAG_FLATTENED_SUFFIXES = [".depth", ".rate"];
+const CW_TAG_FLATTENED_SUFFIXES = [".depth", ".rate", ".dlq_oldest_age"];
 
 function buildCloudWatchKey(
   stat: string,

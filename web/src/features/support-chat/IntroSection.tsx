@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Button } from "@/src/components/ui/button";
 import {
-  Github,
   Bug,
   Lightbulb,
   Sparkles,
@@ -10,8 +9,7 @@ import {
   Radio,
   Calendar,
 } from "lucide-react";
-//eslint-disable-next-line no-restricted-imports
-import { SiDiscord } from "react-icons/si";
+import { SiDiscord, SiGithub } from "react-icons/si";
 import { RainbowButton } from "@/src/components/magicui/rainbow-button";
 import { Separator } from "@/src/components/ui/separator";
 import { usePlan } from "@/src/features/entitlements/hooks";
@@ -53,7 +51,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
   return (
     <div className="mt-1 flex flex-col gap-6">
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-base font-semibold">
+        <div className="flex items-center gap-2 text-base font-bold">
           <Sparkles className="h-4 w-4" /> Ask AI
         </div>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -75,7 +73,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
       <Separator />
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-base font-semibold">
+        <div className="flex items-center gap-2 text-base font-bold">
           <LibraryBig className="h-4 w-4" /> Docs
         </div>
         <p className="text-muted-foreground text-sm">
@@ -101,7 +99,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
       {supportType === "custom" && (
         <>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-base font-semibold">
+            <div className="flex items-center gap-2 text-base font-bold">
               <LifeBuoy className="h-4 w-4" /> Support
             </div>
             <p className="text-muted-foreground text-sm">
@@ -159,7 +157,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
       {supportType === "in-app-support" && (
         <>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-base font-semibold">
+            <div className="flex items-center gap-2 text-base font-bold">
               <LifeBuoy className="h-4 w-4" /> Email a Support Engineer
             </div>
             <p className="text-muted-foreground text-sm">
@@ -178,7 +176,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
       {supportType === "community" && (
         <>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-base font-semibold">
+            <div className="flex items-center gap-2 text-base font-bold">
               <LifeBuoy className="h-4 w-4" /> Community Support
             </div>
             <p className="text-muted-foreground text-sm">
@@ -191,7 +189,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
                 target="_blank"
                 rel="noopener"
               >
-                <Github className="mr-2 h-4 w-4" /> Get Help ↗
+                <SiGithub className="mr-2 h-4 w-4" /> Get Help ↗
               </a>
             </Button>
             <Button variant="outline" asChild>
@@ -220,8 +218,8 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
 
       {supportType !== "custom" && (
         <div>
-          <div className="flex items-center gap-2 text-base font-semibold">
-            <Github className="h-4 w-4" /> Community & Resources
+          <div className="flex items-center gap-2 text-base font-bold">
+            <SiGithub className="h-4 w-4" /> Community & Resources
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
             Join the conversation and connect with the Langfuse community.
@@ -233,7 +231,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
                 target="_blank"
                 rel="noopener"
               >
-                <Github className="mr-2 h-4 w-4" /> GitHub ↗
+                <SiGithub className="mr-2 h-4 w-4" /> GitHub ↗
               </a>
             </Button>
             <Button asChild variant="ghost" className="justify-start px-1.5">

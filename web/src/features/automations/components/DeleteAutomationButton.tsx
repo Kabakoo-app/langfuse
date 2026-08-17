@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-abstracted-overlay-trigger */
 import { useState } from "react";
 import { Button } from "@/src/components/ui/button";
 import { Trash } from "lucide-react";
@@ -42,7 +43,7 @@ export const DeleteAutomationButton: React.FC<DeleteAutomationButtonProps> = ({
           onSuccess();
         }
 
-        void utils.automations.invalidate();
+        utils.automations.invalidate();
       },
     },
   );
@@ -72,7 +73,7 @@ export const DeleteAutomationButton: React.FC<DeleteAutomationButtonProps> = ({
         )}
       </PopoverTrigger>
       <PopoverContent>
-        <h2 className="text-md mb-3 font-semibold">Please confirm</h2>
+        <h2 className="mb-3 font-bold">Please confirm</h2>
         <p className="mb-3 text-sm">
           This action permanently deletes this automation and execution history.
           This cannot be undone.
@@ -83,7 +84,7 @@ export const DeleteAutomationButton: React.FC<DeleteAutomationButtonProps> = ({
             variant="destructive"
             loading={deleteAutomationMutation.isPending}
             onClick={() => {
-              void deleteAutomationMutation.mutateAsync({
+              deleteAutomationMutation.mutateAsync({
                 projectId,
                 automationId,
               });

@@ -97,7 +97,7 @@ export const PlaygroundToolsPopover = () => {
                   className="text-muted-foreground shrink-0"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium" title={tool.name}>
+                  <div className="truncate font-bold" title={tool.name}>
                     {tool.name}
                   </div>
                   <div className="text-muted-foreground line-clamp-1 text-xs">
@@ -229,7 +229,7 @@ export const PlaygroundTools = () => {
   };
 
   return (
-    <ScrollArea className="max-h-[min(45vh,18rem)]">
+    <ScrollArea className="[&>[data-radix-scroll-area-viewport]]:max-h-[min(45vh,18rem)]">
       {tools.length === 0 ? (
         <div className="flex h-16 flex-col items-center justify-center p-4 text-center">
           <p className="text-muted-foreground text-xs">No tools attached.</p>
@@ -271,7 +271,7 @@ export const PlaygroundTools = () => {
                   <WrenchIcon className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
                   <div className="min-w-0">
                     <h3
-                      className="truncate text-sm font-medium"
+                      className="truncate text-sm font-bold"
                       title={tool.name}
                     >
                       {tool.name}

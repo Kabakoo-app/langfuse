@@ -10,7 +10,7 @@ import { TRPCError } from "@trpc/server";
 import { throwIfNoOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
 import { logger } from "@langfuse/shared/src/server";
-import { createBillingServiceFromContext } from "./stripeBillingService";
+import { createBillingServiceFromContext } from "./stripe/stripeBillingService";
 import { isCloudBillingEnabled } from "../utils/isCloudBilling";
 
 export const cloudBillingRouter = createTRPCRouter({
@@ -86,7 +86,7 @@ export const cloudBillingRouter = createTRPCRouter({
         input.stripeProductId,
       );
 
-      void auditLog({
+      auditLog({
         session: ctx.session,
         orgId: input.orgId,
         resourceType: "organization",

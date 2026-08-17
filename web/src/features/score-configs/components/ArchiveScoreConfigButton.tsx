@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-abstracted-overlay-trigger */
 import { Archive } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -33,7 +34,7 @@ export const ArchiveScoreConfigButton = ({
 
   const utils = api.useUtils();
   const configMutation = api.scoreConfigs.update.useMutation({
-    onSuccess: () => void utils.scoreConfigs.invalidate(),
+    onSuccess: () => utils.scoreConfigs.invalidate(),
   });
 
   return (
@@ -56,7 +57,7 @@ export const ArchiveScoreConfigButton = ({
         onClick={(e) => e.stopPropagation()}
         className="max-w-[500px]"
       >
-        <h2 className="text-md mb-3 font-semibold">
+        <h2 className="mb-3 font-bold">
           {isArchived ? "Restore config" : "Archive config"}
         </h2>
         <p className="mb-3 text-sm">
@@ -71,7 +72,7 @@ export const ArchiveScoreConfigButton = ({
             variant={isArchived ? "default" : "destructive"}
             loading={configMutation.isPending}
             onClick={() => {
-              void configMutation.mutateAsync({
+              configMutation.mutateAsync({
                 projectId,
                 id: configId,
                 isArchived: !isArchived,

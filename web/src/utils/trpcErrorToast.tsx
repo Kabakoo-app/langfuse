@@ -38,6 +38,17 @@ const getErrorTitleAndHttpCode = (error: TRPCClientError<any>) => {
   const httpStatus: number =
     typeof error.data?.httpStatus === "number" ? error.data.httpStatus : 500;
 
+  if (
+    httpStatus === 422 &&
+    error.data?.errorName === "ClickHouseResourceError"
+  ) {
+    // Handle ClickHouse resource limit errors with specific messaging
+    return {
+      errorTitle: "Request Timed Out",
+      httpStatus,
+    };
+  }
+
   if (httpStatus in httpStatusOverride) {
     return {
       errorTitle: errorTitleMap[httpStatusOverride[httpStatus]],
@@ -75,7 +86,7 @@ export const trpcErrorToast = (error: unknown) => {
     if (isResponseParseError(error)) {
       showErrorToast(
         "Unexpected Response",
-        "The request could not be completed. We've been notified and are looking into it. Please try again or contact support if this persists.",
+        "The request could not be completed. Please try again or contact support if this persists.",
         "WARNING",
       );
       return;

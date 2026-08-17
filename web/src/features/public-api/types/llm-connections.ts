@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
-  paginationZod,
+  publicApiPaginationZod,
   LLMAdapter,
   type JSONValue,
   BedrockConfigSchema,
   BedrockCredentialSchema,
   BEDROCK_USE_DEFAULT_CREDENTIALS,
+  LLMConnectionConfigSchema,
+  OpenAIConfigSchema,
   VertexAIConfigSchema,
 } from "@langfuse/shared";
 
@@ -20,7 +22,7 @@ export const LlmConnectionResponse = z
     customModels: z.array(z.string()),
     withDefaultModels: z.boolean(),
     extraHeaderKeys: z.array(z.string()),
-    config: z.record(z.string(), z.unknown()).nullable(),
+    config: LLMConnectionConfigSchema.nullable(),
     createdAt: z.coerce.date(),
     updatedAt: z.coerce.date(),
   })
@@ -29,7 +31,7 @@ export const LlmConnectionResponse = z
 // GET /api/public/llm-connections query parameters
 export const GetLlmConnectionsV1Query = z
   .object({
-    ...paginationZod,
+    ...publicApiPaginationZod,
   })
   .strict();
 
@@ -49,13 +51,13 @@ export const GetLlmConnectionsV1Response = z
 // Base request schema (before adapter-specific validation)
 const PutLlmConnectionV1BodyBase = z.object({
   provider: z.string().min(1),
-  adapter: z.nativeEnum(LLMAdapter),
+  adapter: z.enum(LLMAdapter),
   secretKey: z.string().min(1),
-  baseURL: z.string().url().nullable().optional(),
+  baseURL: z.url().nullable().optional(),
   customModels: z.array(z.string().min(1)).optional(),
   withDefaultModels: z.boolean().optional().default(true),
   extraHeaders: z.record(z.string(), z.string()).optional(),
-  config: z.record(z.string(), z.string()).optional(),
+  config: LLMConnectionConfigSchema.optional(),
 });
 
 // PUT /api/public/llm-connections request body (upsert) with adapter-specific validation
@@ -100,6 +102,18 @@ export const PutLlmConnectionV1Body = PutLlmConnectionV1BodyBase.superRefine(
             message:
               "Invalid Bedrock credentials. Expected a JSON object with either {accessKeyId, secretAccessKey} or {apiKey}.",
             path: ["secretKey"],
+          });
+        }
+      }
+    } else if (adapter === LLMAdapter.OpenAI) {
+      // OpenAI config is optional, but if provided only supports explicit Responses API routing
+      if (config) {
+        const result = OpenAIConfigSchema.safeParse(config);
+        if (!result.success) {
+          ctx.addIssue({
+            code: "custom",
+            message: `Invalid OpenAI config: ${result.error.issues.map((e) => e.message).join(", ")}. Expected: { useResponsesApi: boolean }`,
+            path: ["config"],
           });
         }
       }

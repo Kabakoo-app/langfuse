@@ -16,10 +16,14 @@ export const filterOperators = {
     "ends with",
   ],
   numberObject: ["=", ">", "<", ">=", "<="],
+  booleanObject: ["=", "<>"],
   boolean: ["=", "<>"],
   null: ["is null", "is not null"],
   positionInTrace: ["="],
 } as const;
+
+export const FTS_MATCH_OPERATOR = "matches" as const;
+export type FtsMatchOperator = typeof FTS_MATCH_OPERATOR;
 
 export const timeFilter = z.object({
   column: z.string(),
@@ -53,10 +57,16 @@ export const arrayOptionsFilter = z
     value: z.array(z.string()),
     type: z.literal("arrayOptions"),
   })
-  .refine((data) => data.operator === "all of" || data.value.length > 0, {
-    message:
-      "Value array must not be empty unless operator is 'all of' (which represents waiting for selection)",
-  });
+  .refine(
+    (data) =>
+      data.operator === "all of" ||
+      data.operator === "none of" ||
+      data.value.length > 0,
+    {
+      message:
+        "Value array must not be empty unless operator is 'all of' or 'none of' (which represent waiting for selection)",
+    },
+  );
 export const stringObjectFilter = z.object({
   type: z.literal("stringObject"),
   column: z.string(),
@@ -70,6 +80,13 @@ export const numberObjectFilter = z.object({
   key: z.string(), // eg scores --> "accuracy"
   operator: z.enum(filterOperators.number),
   value: z.number(),
+});
+export const booleanObjectFilter = z.object({
+  type: z.literal("booleanObject"),
+  column: z.string(),
+  key: z.string(), // eg scores --> "is_hallucination"
+  operator: z.enum(filterOperators.booleanObject),
+  value: z.boolean(),
 });
 export const booleanFilter = z.object({
   type: z.literal("boolean"),
@@ -95,7 +112,7 @@ export const positionInTraceFilter = z
     const needsValue = data.key === "nthFromEnd" || data.key === "nthFromStart";
     if (needsValue && (!data.value || data.value < 1)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Position must be >= 1 for nth selection",
         path: ["value"],
       });
@@ -117,7 +134,43 @@ export const singleFilter = z.discriminatedUnion("type", [
   arrayOptionsFilter,
   stringObjectFilter,
   numberObjectFilter,
+  booleanObjectFilter,
   booleanFilter,
   nullFilter,
   positionInTraceFilter,
 ]);
+
+const eventsTableStringOperator = z.union([
+  z.enum(filterOperators.string),
+  z.literal(FTS_MATCH_OPERATOR),
+]);
+
+const eventsTableStringObjectOperator = z.union([
+  z.enum(filterOperators.stringObject),
+  z.literal(FTS_MATCH_OPERATOR),
+]);
+
+export const eventsTableStringFilter = stringFilter.extend({
+  operator: eventsTableStringOperator,
+});
+
+export const eventsTableStringObjectFilter = stringObjectFilter.extend({
+  operator: eventsTableStringObjectOperator,
+});
+
+export const eventsTableSingleFilter = z.discriminatedUnion("type", [
+  timeFilter,
+  eventsTableStringFilter,
+  numberFilter,
+  stringOptionsFilter,
+  categoryOptionsFilter,
+  arrayOptionsFilter,
+  eventsTableStringObjectFilter,
+  numberObjectFilter,
+  booleanObjectFilter,
+  booleanFilter,
+  nullFilter,
+  positionInTraceFilter,
+]);
+
+export const eventsTableFilterState = z.array(eventsTableSingleFilter);

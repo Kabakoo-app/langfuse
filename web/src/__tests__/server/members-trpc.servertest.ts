@@ -1,10 +1,14 @@
-/** @jest-environment node */
-
 import { appRouter } from "@/src/server/api/root";
 import { createInnerTRPCContext } from "@/src/server/api/trpc";
 import { prisma } from "@langfuse/shared/src/db";
 import { Role, type Plan } from "@langfuse/shared";
 import type { Session } from "next-auth";
+
+// Session fixture sub-object types; casts keep the runtime fixtures unchanged
+// while satisfying newer required fields on the session user type.
+type SessionUser = NonNullable<Session["user"]>;
+type SessionProject = SessionUser["organizations"][number]["projects"][number];
+type SessionFeatureFlags = SessionUser["featureFlags"];
 import { v4 as uuidv4 } from "uuid";
 
 async function createTestOrg(plan: Plan) {
@@ -52,7 +56,11 @@ function createSession(
   org: { id: string; name: string },
   project: { id: string; name: string },
   plan: Plan,
+  roles: { orgRole?: Role; projectRole?: Role } = {},
 ): Session {
+  const orgRole = roles.orgRole ?? Role.OWNER;
+  const projectRole = roles.projectRole ?? Role.OWNER;
+
   return {
     expires: "1",
     user: {
@@ -64,27 +72,28 @@ function createSession(
         {
           id: org.id,
           name: org.name,
-          role: "OWNER",
+          role: orgRole,
           plan: plan,
           cloudConfig: undefined,
           metadata: {},
           aiFeaturesEnabled: false,
+          aiTelemetryEnabled: true,
           projects: [
             {
               id: project.id,
-              role: "OWNER",
+              role: projectRole,
               retentionDays: 30,
               deletedAt: null,
               name: project.name,
               metadata: {},
-            },
+            } as SessionProject,
           ],
         },
       ],
       featureFlags: {
         excludeClickhouseRead: false,
         templateFlag: true,
-      },
+      } as SessionFeatureFlags,
       admin: false, // Not admin to test actual limits
     },
     environment: {
@@ -259,6 +268,90 @@ describe("membersRouter.create - organization member limit enforcement", () => {
       });
       expect(inviteCount).toBe(4);
     }, 25_000);
+  });
+});
+
+describe("membersRouter.allInvitesFromProject", () => {
+  it("returns a totalCount that matches project-scoped invitation filtering", async () => {
+    const { org, project, ownerUser } = await prepare("cloud:core");
+    const otherProject = await prisma.project.create({
+      data: {
+        id: uuidv4(),
+        name: `Other Project ${uuidv4().substring(0, 8)}`,
+        orgId: org.id,
+      },
+    });
+    const projectOnlyUser = await createTestUser();
+    const orgMembership = await prisma.organizationMembership.create({
+      data: {
+        userId: projectOnlyUser.id,
+        orgId: org.id,
+        role: Role.NONE,
+      },
+    });
+    await prisma.projectMembership.create({
+      data: {
+        userId: projectOnlyUser.id,
+        projectId: project.id,
+        role: Role.MEMBER,
+        orgMembershipId: orgMembership.id,
+      },
+    });
+
+    const orgInviteEmail = `org-invite-${uuidv4().substring(0, 8)}@test.com`;
+    const projectInviteEmail = `project-invite-${uuidv4().substring(0, 8)}@test.com`;
+    const otherProjectInviteEmail = `other-project-invite-${uuidv4().substring(0, 8)}@test.com`;
+
+    await prisma.membershipInvitation.createMany({
+      data: [
+        {
+          orgId: org.id,
+          email: orgInviteEmail,
+          orgRole: Role.MEMBER,
+          invitedByUserId: ownerUser.id,
+        },
+        {
+          orgId: org.id,
+          projectId: project.id,
+          email: projectInviteEmail,
+          orgRole: Role.NONE,
+          projectRole: Role.MEMBER,
+          invitedByUserId: ownerUser.id,
+        },
+        {
+          orgId: org.id,
+          projectId: otherProject.id,
+          email: otherProjectInviteEmail,
+          orgRole: Role.NONE,
+          projectRole: Role.MEMBER,
+          invitedByUserId: ownerUser.id,
+        },
+      ],
+    });
+
+    const projectOnlySession = createSession(
+      projectOnlyUser,
+      org,
+      project,
+      "cloud:core",
+      { orgRole: Role.NONE, projectRole: Role.MEMBER },
+    );
+    const ctx = createInnerTRPCContext({
+      session: projectOnlySession,
+      headers: {},
+    });
+    const caller = appRouter.createCaller({ ...ctx, prisma });
+
+    const result = await caller.members.allInvitesFromProject({
+      projectId: project.id,
+      page: 0,
+      limit: 10,
+    });
+
+    expect(result.totalCount).toBe(2);
+    expect(result.invitations.map((invite) => invite.email).sort()).toEqual(
+      [orgInviteEmail, projectInviteEmail].sort(),
+    );
   });
 });
 
@@ -441,5 +534,130 @@ describe("membersRouter.updateProjectRole - audit log state capture", () => {
     });
 
     expect(logs.map((l) => l.action)).toEqual(["create", "update", "delete"]);
+  });
+});
+
+describe("membersRouter.updateProjectRole - orgMembership/userId consistency", () => {
+  it("rejects a mismatched orgMembershipId / userId pair with BAD_REQUEST and writes nothing", async () => {
+    const { org, project, caller } = await prepare("cloud:core");
+
+    // The org member who actually owns the targeted org membership.
+    const targetUser = await createTestUser();
+    const orgMembership = await prisma.organizationMembership.create({
+      data: {
+        userId: targetUser.id,
+        orgId: org.id,
+        role: Role.MEMBER,
+      },
+    });
+
+    // A different, unrelated user whose id the caller tries to smuggle in.
+    // Project access is resolved via orgMembershipId, so accepting this would
+    // grant the role to targetUser while recording it against otherUser in both
+    // the ProjectMembership row and the audit log.
+    const otherUser = await createTestUser();
+
+    await expect(
+      caller.members.updateProjectRole({
+        orgId: org.id,
+        orgMembershipId: orgMembership.id,
+        userId: otherUser.id,
+        projectId: project.id,
+        projectRole: Role.ADMIN,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // No ProjectMembership row and no audit log entry should have been written.
+    const rows = await prisma.projectMembership.findMany({
+      where: { projectId: project.id },
+    });
+    expect(rows).toHaveLength(0);
+
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        orgId: org.id,
+        resourceType: "projectMembership",
+        resourceId: `${project.id}--${otherUser.id}`,
+      },
+    });
+    expect(logs).toHaveLength(0);
+  });
+
+  it("allows a matching orgMembershipId / userId pair", async () => {
+    const { org, project, caller } = await prepare("cloud:core");
+
+    const targetUser = await createTestUser();
+    const orgMembership = await prisma.organizationMembership.create({
+      data: {
+        userId: targetUser.id,
+        orgId: org.id,
+        role: Role.MEMBER,
+      },
+    });
+
+    await expect(
+      caller.members.updateProjectRole({
+        orgId: org.id,
+        orgMembershipId: orgMembership.id,
+        userId: targetUser.id,
+        projectId: project.id,
+        projectRole: Role.ADMIN,
+      }),
+    ).resolves.toMatchObject({ userId: targetUser.id, role: Role.ADMIN });
+
+    const row = await prisma.projectMembership.findUnique({
+      where: {
+        projectId_userId: { projectId: project.id, userId: targetUser.id },
+      },
+    });
+    expect(row?.role).toBe(Role.ADMIN);
+    expect(row?.orgMembershipId).toBe(orgMembership.id);
+  });
+});
+
+describe("membersRouter.updateProjectRole - project organization consistency", () => {
+  it("rejects a project from another organization without writing membership or audit log", async () => {
+    const { org, ownerUser, caller } = await prepare("cloud:core");
+    const { project: otherOrgProject } = await createTestOrg("cloud:core");
+
+    const orgMembership = await prisma.organizationMembership.findUniqueOrThrow(
+      {
+        where: {
+          orgId_userId: {
+            orgId: org.id,
+            userId: ownerUser.id,
+          },
+        },
+      },
+    );
+
+    await expect(
+      caller.members.updateProjectRole({
+        orgId: org.id,
+        orgMembershipId: orgMembership.id,
+        userId: ownerUser.id,
+        projectId: otherOrgProject.id,
+        projectRole: Role.OWNER,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    const projectMembership = await prisma.projectMembership.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: otherOrgProject.id,
+          userId: ownerUser.id,
+        },
+      },
+    });
+    expect(projectMembership).toBeNull();
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: {
+        orgId: org.id,
+        resourceType: "projectMembership",
+        resourceId: `${otherOrgProject.id}--${ownerUser.id}`,
+      },
+    });
+    expect(auditLogs).toHaveLength(0);
   });
 });

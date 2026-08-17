@@ -11,14 +11,14 @@ import useSessionStorage from "@/src/components/useSessionStorage";
 import { useExperimentResultsState } from "@/src/features/experiments/hooks/useExperimentResultsState";
 import { useEffect } from "react";
 import { ExperimentDisplaySettings } from "@/src/features/experiments/components/ExperimentDisplaySettings";
-import { Button } from "@/src/components/ui/button";
-import { X, Loader2 } from "lucide-react";
 import { useExperimentAccess } from "@/src/features/experiments/hooks/useExperimentAccess";
-import { ExperimentsBetaSwitch } from "@/src/features/experiments/components/ExperimentsBetaSwitch";
 import {
   EXPERIMENT_RUN_TABS,
   getExperimentRunTabs,
 } from "@/src/features/navigation/utils/experiment-run-tabs";
+import Spinner from "@/src/components/design-system/Spinner/Spinner";
+import { ExperimentSelectionControls } from "@/src/features/experiments/components/ExperimentSelectionControls";
+import { useIoRenderModeLocalStorage } from "@/src/components/table/data-table-io-render-mode-switch";
 
 export default function ExperimentResults() {
   const router = useRouter();
@@ -35,11 +35,16 @@ export default function ExperimentResults() {
     setLayout,
     itemVisibility,
     setItemVisibility,
+    allExperimentIds,
   } = useExperimentResultsState();
+  const [ioRenderMode, setIoRenderMode] = useIoRenderModeLocalStorage(
+    "experiment-items",
+    "json",
+  );
 
   const [isOverviewOpen, setIsOverviewOpen] = useSessionStorage(
     "overview-panel-experiment-detail",
-    true,
+    false,
   );
 
   const [, setLastResultsUrl] = useSessionStorage<string | null>(
@@ -52,12 +57,13 @@ export default function ExperimentResults() {
     setLastResultsUrl(window.location.pathname + window.location.search);
   }, [setLastResultsUrl]);
 
-  const {
-    canUseExperimentsBetaToggle,
-    isExperimentsBetaEnabled,
-    setExperimentsBetaEnabled,
-    isExperimentsBetaActive,
-  } = useExperimentAccess();
+  const { isExperimentsBetaActive, isInitializing } = useExperimentAccess();
+
+  useEffect(() => {
+    if (isInitializing || isExperimentsBetaActive || !projectId) return;
+
+    router.replace(`/project/${projectId}/datasets`);
+  }, [isExperimentsBetaActive, isInitializing, projectId, router]);
 
   // Fetch experiment to get dataset ID and other details
   const { data: experiment } = api.experiments.byId.useQuery(
@@ -70,39 +76,21 @@ export default function ExperimentResults() {
     },
   );
 
-  // Auto-redirect to datasets page when beta is off
-  useEffect(() => {
-    if (!isExperimentsBetaActive) {
-      void router.push(`/project/${projectId}/datasets`);
-    }
-  }, [isExperimentsBetaActive, projectId, router]);
-
-  // Show spinner while redirecting when beta is off
+  // Show spinner while session loads or while redirecting when beta is off
   if (!isExperimentsBetaActive) {
     return (
       <Page headerProps={{ title: "Experiments" }}>
         <div className="flex h-full items-center justify-center">
-          <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
+          <Spinner size="xl" variant="muted" />
         </div>
       </Page>
     );
   }
 
-  const handleBetaSwitchChange = (enabled: boolean) => {
-    setExperimentsBetaEnabled(enabled);
-
-    // When switching OFF, redirect to datasets page
-    if (!enabled) {
-      void router.push(`/project/${projectId}/datasets`);
-    }
-  };
-
   return (
     <Page
       headerProps={{
-        title: hasBaseline
-          ? (experiment?.name ?? baselineId ?? "Results")
-          : "Results",
+        title: "",
         itemType: "EXPERIMENT",
         breadcrumb: [
           { name: "Experiments", href: `/project/${projectId}/experiments` },
@@ -111,21 +99,20 @@ export default function ExperimentResults() {
           tabs: getExperimentRunTabs(projectId),
           activeTab: EXPERIMENT_RUN_TABS.RESULTS,
         },
-        actionButtonsLeft: canUseExperimentsBetaToggle ? (
-          <ExperimentsBetaSwitch
-            enabled={isExperimentsBetaEnabled}
-            onEnabledChange={handleBetaSwitchChange}
+        actionButtonsLeft: (
+          <ExperimentSelectionControls
+            projectId={projectId}
+            baselineId={baselineId}
+            baselineName={experiment?.name}
+            comparisonIds={comparisonIds}
+            selectedExperimentCount={allExperimentIds.length}
+            onBaselineChange={setBaseline}
+            onBaselineClear={clearBaseline}
+            onComparisonIdsChange={setComparisonIds}
           />
-        ) : undefined,
+        ),
         actionButtonsRight: (
           <>
-            {hasBaseline && comparisonIds.length > 0 && (
-              <Button variant="outline" onClick={clearBaseline}>
-                <X className="h-4 w-4" />
-                <span className="ml-2 hidden md:inline">Clear baseline</span>
-              </Button>
-            )}
-
             <ExperimentDisplaySettings
               layout={layout}
               onLayoutChange={setLayout}
@@ -133,6 +120,8 @@ export default function ExperimentResults() {
               onItemVisibilityChange={setItemVisibility}
               hasComparisons={comparisonIds.length > 0}
               hasBaseline={hasBaseline}
+              ioRenderMode={ioRenderMode}
+              onIoRenderModeChange={setIoRenderMode}
             />
 
             <OverviewPanelToggle
@@ -146,22 +135,24 @@ export default function ExperimentResults() {
       <OverviewPanelLayout
         open={isOverviewOpen}
         persistId={`experiment-detail-${baselineId ?? "none"}`}
-        mainContent={<ExperimentItemsTable projectId={projectId} />}
-        overviewContent={
-          <ExperimentOverviewPanel
+        mainContent={
+          <ExperimentItemsTable
+            key={ioRenderMode}
             projectId={projectId}
-            hasBaseline={hasBaseline}
-            experiment={experiment ?? undefined}
-            comparisonIds={comparisonIds}
-            onComparisonIdsChange={setComparisonIds}
-            onBaselineChange={setBaseline}
-            onBaselineClear={clearBaseline}
+            ioRenderMode={ioRenderMode}
           />
         }
-        defaultMainSize={75}
-        defaultSidebarSize={25}
-        minMainSize={50}
-        maxSidebarSize={40}
+        overviewContent={
+          <ExperimentOverviewPanel
+            key={baselineId ?? "no-baseline"}
+            projectId={projectId}
+            experiment={experiment ?? undefined}
+          />
+        }
+        defaultPrimarySize={75}
+        defaultSecondarySize={25}
+        minPrimarySize={50}
+        maxSecondarySize={40}
       />
     </Page>
   );

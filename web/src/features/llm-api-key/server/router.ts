@@ -20,18 +20,23 @@ import {
   GCPServiceAccountKeySchema,
   BedrockConfigSchema,
   BedrockCredentialSchema,
+  OpenAIConfigSchema,
   VertexAIConfigSchema,
   BEDROCK_USE_DEFAULT_CREDENTIALS,
   VERTEXAI_USE_DEFAULT_CREDENTIALS,
   EvaluatorBlockReason,
   getEvaluatorBlockMetadata,
+  type LLMConnectionConfig,
 } from "@langfuse/shared";
+import { findDefaultModelEvalTemplateIds } from "@/src/features/evals/server/evaluatorRepository";
 import { encrypt, decrypt } from "@langfuse/shared/encryption";
 import {
   ChatMessageType,
-  fetchLLMCompletion,
+  generateLLMText,
+  getClientInitiatedNonStreamingLlmTimeoutMs,
   LLMAdapter,
   logger,
+  mapLegacyLLMCompletionParams,
   decryptAndParseExtraHeaders,
   blockEvaluatorConfigsInTx,
   EvaluatorBlockSource,
@@ -127,11 +132,13 @@ async function testLLMConnection(
     ];
 
     // Parse config properly for type safety
-    let parsedConfig: Record<string, string> | null = null;
+    let parsedConfig: LLMConnectionConfig | null = null;
     if (params.config && params.adapter === LLMAdapter.Bedrock) {
       const bedrockConfig = BedrockConfigSchema.parse(params.config);
 
       parsedConfig = { region: bedrockConfig.region };
+    } else if (params.config && params.adapter === LLMAdapter.OpenAI) {
+      parsedConfig = OpenAIConfigSchema.parse(params.config);
     } else if (params.config && params.adapter === LLMAdapter.VertexAI) {
       const vertexAIConfig = VertexAIConfigSchema.parse(params.config);
       parsedConfig = vertexAIConfig.location
@@ -139,22 +146,24 @@ async function testLLMConnection(
         : null;
     }
 
-    await fetchLLMCompletion({
-      modelParams: {
-        adapter: params.adapter,
-        provider: params.provider,
-        model,
-      },
-      llmConnection: {
-        secretKey: encrypt(params.secretKey),
-        extraHeaders:
-          params.extraHeaders && encrypt(JSON.stringify(params.extraHeaders)),
-        baseURL: params.baseURL || undefined,
-        config: parsedConfig,
-      },
-      messages: testMessages,
-      streaming: false,
+    await generateLLMText({
+      ...mapLegacyLLMCompletionParams({
+        modelParams: {
+          adapter: params.adapter,
+          provider: params.provider,
+          model,
+        },
+        connection: {
+          secretKey: encrypt(params.secretKey),
+          extraHeaders:
+            params.extraHeaders && encrypt(JSON.stringify(params.extraHeaders)),
+          baseURL: params.baseURL || undefined,
+          config: parsedConfig,
+        },
+        messages: testMessages,
+      }),
       maxRetries: 1,
+      timeout: getClientInitiatedNonStreamingLlmTimeoutMs(),
     });
 
     return { success: true };
@@ -351,15 +360,9 @@ export const llmApiKeyRouter = createTRPCRouter({
         }
 
         if (!!defaultModel && defaultModel.llmApiKeyId === llmApiKey?.id) {
-          const evalTemplates = await tx.evalTemplate.findMany({
-            where: {
-              OR: [{ projectId: input.projectId }, { projectId: null }],
-              provider: null,
-              model: null,
-            },
-            select: {
-              id: true,
-            },
+          const evalTemplateIds = await findDefaultModelEvalTemplateIds({
+            tx,
+            projectId: input.projectId,
           });
 
           const defaultModelBlockResult = await blockEvaluatorConfigsInTx({
@@ -367,7 +370,7 @@ export const llmApiKeyRouter = createTRPCRouter({
             projectId: input.projectId,
             where: {
               evalTemplateId: {
-                in: evalTemplates.map((template) => template.id),
+                in: evalTemplateIds,
               },
             },
             blockReason: EvaluatorBlockReason.DEFAULT_EVAL_MODEL_MISSING,
@@ -630,6 +633,13 @@ export const llmApiKeyRouter = createTRPCRouter({
             ? input.baseURL !== existingKey.baseURL
             : false;
 
+        if (isBaseURLChanged && !input.secretKey) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Secret key is required when changing the base URL",
+          });
+        }
+
         if (input.baseURL && isBaseURLChanged) {
           await validateBaseURLForWrite({
             baseURL: input.baseURL,
@@ -677,7 +687,9 @@ export const llmApiKeyRouter = createTRPCRouter({
         const decryptedHeaders = existingKey.extraHeaders
           ? decryptAndParseExtraHeaders(existingKey.extraHeaders)
           : null;
-        const existingHeaders: Record<string, string> = decryptedHeaders ?? {};
+        const existingHeaders: Record<string, string> = isBaseURLChanged
+          ? {}
+          : (decryptedHeaders ?? {});
 
         // Ensure we only update the extraHeaders where the value is not null
         let extraHeaders: Record<string, string> | undefined;
@@ -711,15 +723,22 @@ export const llmApiKeyRouter = createTRPCRouter({
         }
 
         const key = await ctx.prisma.llmApiKeys.update({
-          where: { id: input.id },
+          where: {
+            id: input.id,
+            projectId: input.projectId,
+          },
           data: {
             ...(input.secretKey ? { secretKey: encrypt(input.secretKey) } : {}),
             extraHeaders: extraHeaders
               ? encrypt(JSON.stringify(extraHeaders))
-              : undefined,
+              : isBaseURLChanged
+                ? null
+                : undefined,
             extraHeaderKeys: extraHeaders
               ? Object.keys(extraHeaders)
-              : undefined,
+              : isBaseURLChanged
+                ? []
+                : undefined,
             displaySecretKey: input.secretKey
               ? getDisplaySecretKey(input.secretKey)
               : undefined,

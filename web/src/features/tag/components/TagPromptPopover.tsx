@@ -1,3 +1,4 @@
+/* eslint-disable @repo/no-style-props */
 import React, { useState } from "react";
 import { api } from "@/src/utils/api";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
@@ -55,7 +56,7 @@ export function TagPromptPopover({
   });
 
   function mutateTags(newTags: string[]) {
-    void mutTags.mutateAsync({
+    mutTags.mutateAsync({
       projectId,
       name: promptName,
       tags: newTags,

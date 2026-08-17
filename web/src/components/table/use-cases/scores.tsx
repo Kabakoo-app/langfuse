@@ -22,19 +22,12 @@ import {
 import { usePeekTableState } from "@/src/components/table/peek/contexts/PeekTableStateContext";
 import {
   getScoreFilterConfig,
+  observationScopeFilter,
   SCORE_COLUMN_TO_BACKEND_KEY,
   type ScoresTableHiddenColumn,
 } from "@/src/features/filters/config/scores-config";
-import { DEFAULT_SIDEBAR_IMPLICIT_ENVIRONMENT_CONFIG } from "@/src/features/filters/constants/internal-environments";
-import { transformFiltersForBackend } from "@/src/features/filters/lib/filter-transform";
-import { isNumericDataType } from "@/src/features/scores/lib/helpers";
-import { useOrderByState } from "@/src/features/orderBy/hooks/useOrderByState";
-import { useTableDateRange } from "@/src/hooks/useTableDateRange";
-import { toAbsoluteTimeRange } from "@/src/utils/date-range-utils";
-import { api } from "@/src/utils/api";
-
-import type { RouterOutput } from "@/src/utils/types";
 import {
+  DEFAULT_SIDEBAR_IMPLICIT_ENVIRONMENT_CONFIG,
   isPresent,
   type FilterState,
   type ScoreDataTypeType,
@@ -44,6 +37,16 @@ import {
   TableViewPresetTableName,
   type TimeFilter,
 } from "@langfuse/shared";
+import { transformFiltersForBackend } from "@/src/features/filters/lib/filter-transform";
+import { sortOptionValues } from "@/src/features/filters/lib/option-sort";
+import { isNumericDataType } from "@/src/features/scores/lib/helpers";
+import { useOrderByState } from "@/src/features/orderBy/hooks/useOrderByState";
+import { useTableDateRange } from "@/src/hooks/useTableDateRange";
+import { toAbsoluteTimeRange } from "@/src/utils/date-range-utils";
+import { api } from "@/src/utils/api";
+import { TableHeaderControls } from "@/src/components/table/table-header-controls";
+
+import type { RouterOutput } from "@/src/utils/types";
 import TagList from "@/src/features/tag/components/TagList";
 import { cn } from "@/src/utils/tailwind";
 import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
@@ -62,14 +65,22 @@ import { useTableViewManager } from "@/src/components/table/table-view-presets/h
 import TableIdOrName from "@/src/components/table/table-id";
 import { usePaginationState } from "@/src/hooks/usePaginationState";
 import { useV4Beta } from "@/src/features/events/hooks/useV4Beta";
+import {
+  ScoreTag,
+  scoreLevelFromScore,
+  type ScoreLevel,
+} from "@/src/components/score-tag";
 
 export type ScoresTableRow = {
   id: string;
   traceId?: string;
   sessionId?: string;
+  datasetRunId?: string;
   timestamp: Date;
   source: string;
   name: string;
+  /** Derived from the score's context ids (scoreLevelFromScore). */
+  level: ScoreLevel;
   dataType: ScoreDataTypeType;
   value: string;
   author: {
@@ -93,9 +104,22 @@ export type ScoresTableProps = {
   userId?: string;
   traceId?: string;
   observationId?: string;
+  /**
+   * Widen the `observationId` scope to also list the trace's trace-level scores
+   * (no `observationId`). Set when the observation stands in for the trace — the
+   * top-level span of a v4 trace, which carries them on its badge too.
+   */
+  includeTraceLevelScores?: boolean;
   hiddenColumns?: ScoresTableHiddenColumn[];
   localStorageSuffix?: string;
   disableUrlPersistence?: boolean;
+  /**
+   * When true, render the time-range picker and auto-refresh button in the
+   * page header (next to the title) via the header controls slot, instead of
+   * inside the table toolbar. Only used when the table is the primary content
+   * of a `Page`.
+   */
+  showControlsInPageHeader?: boolean;
 };
 
 function createFilterState(
@@ -119,9 +143,11 @@ export default function ScoresTable({
   userId,
   traceId,
   observationId,
+  includeTraceLevelScores = false,
   hiddenColumns = [],
   localStorageSuffix = "",
   disableUrlPersistence = false,
+  showControlsInPageHeader = false,
 }: ScoresTableProps) {
   const peekContext = usePeekTableState();
 
@@ -173,6 +199,13 @@ export default function ScoresTable({
       ]
     : [];
 
+  // Scoped to a single trace (trace/observation detail): a time window can only
+  // hide that trace's own scores — the trace id already bounds the query — so the
+  // rows are unwindowed and the picker is not offered. The window still bounds the
+  // filter-option queries, which are project-wide either way.
+  const isTraceScoped = Boolean(traceId);
+  const rowDateRangeFilter: FilterState = isTraceScoped ? [] : dateRangeFilter;
+
   const environmentFilterOptions =
     api.projects.environmentFilterOptions.useQuery(
       {
@@ -209,9 +242,20 @@ export default function ScoresTable({
       });
     },
     onSettled: () => {
-      void utils.scores.all.invalidate();
-      void utils.scores.allFromEvents.invalidate();
-      void utils.scores.countAllFromEvents.invalidate();
+      utils.scores.all.invalidate();
+      utils.scores.allFromEvents.invalidate();
+      utils.scores.countAllFromEvents.invalidate();
+
+      if (traceId) {
+        utils.traces.byIdWithObservationsAndScores.invalidate({
+          projectId,
+          traceId,
+        });
+        utils.events.scoresForTrace.invalidate({
+          projectId,
+          traceId,
+        });
+      }
     },
   });
 
@@ -290,6 +334,7 @@ export default function ScoresTable({
           value: sv.value,
           count: sv.count !== undefined ? Number(sv.count) : undefined,
         })) ?? undefined,
+      booleanValue: filterOptions.data?.booleanValue ?? undefined,
       traceName:
         filterOptions.data?.traceName?.map((tn) => ({
           value: tn.value,
@@ -300,7 +345,8 @@ export default function ScoresTable({
           value: u.value,
           count: u.count !== undefined ? Number(u.count) : undefined,
         })) ?? undefined,
-      tags: filterOptions.data?.tags?.map((t) => t.value) ?? undefined, // tags don't have counts
+      // tags don't have counts; they read A→Z
+      tags: sortOptionValues(filterOptions.data?.tags?.map((t) => t.value)),
       environment: environmentOptions,
     }),
     [filterOptions.data, environmentOptions],
@@ -353,13 +399,13 @@ export default function ScoresTable({
   );
 
   const filterState = createFilterState(
-    queryFilter.effectiveFilterState.concat(dateRangeFilter),
+    queryFilter.effectiveFilterState.concat(
+      rowDateRangeFilter,
+      observationScopeFilter(observationId, includeTraceLevelScores),
+    ),
     [
       ...(userId ? [{ key: "User ID", value: userId }] : []),
       ...(traceId ? [{ key: "Trace ID", value: traceId }] : []),
-      ...(observationId
-        ? [{ key: "Observation ID", value: observationId }]
-        : []),
     ],
   );
 
@@ -372,8 +418,6 @@ export default function ScoresTable({
   const getCountPayload = {
     projectId,
     filter: backendFilterState,
-    page: 0,
-    limit: 1,
     orderBy: null,
   };
 
@@ -428,6 +472,7 @@ export default function ScoresTable({
     projectId,
     tableName: "scores",
     setSelectedRows,
+    setSelectAll,
   });
 
   const rawColumns: LangfuseColumnDef<ScoresTableRow>[] = [
@@ -449,11 +494,173 @@ export default function ScoresTable({
       },
     },
     {
+      accessorKey: "timestamp",
+      header: "Timestamp",
+      id: "timestamp",
+      enableHiding: true,
+      enableSorting: true,
+      size: 150,
+      cell: ({ row }) => {
+        const value: ScoresTableRow["timestamp"] = row.getValue("timestamp");
+        return value ? <LocalIsoDate date={value} /> : undefined;
+      },
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      id: "name",
+      enableHiding: true,
+      enableSorting: true,
+      size: 150,
+    },
+    {
+      accessorKey: "value",
+      header: "Value",
+      id: "value",
+      enableHiding: true,
+      enableSorting: true,
+      size: 100,
+    },
+    {
+      accessorKey: "dataType",
+      header: "Data Type",
+      id: "dataType",
+      enableHiding: true,
+      enableSorting: true,
+      defaultHidden: true,
+      size: 100,
+    },
+    {
+      accessorKey: "source",
+      header: "Source",
+      id: "source",
+      enableHiding: true,
+      enableSorting: true,
+      defaultHidden: true,
+      size: 100,
+    },
+    {
+      accessorKey: "level",
+      header: "Level",
+      id: "level",
+      enableHiding: true,
+      defaultHidden: true,
+      // Derived client-side from the score's context ids — not a sortable
+      // backend column.
+      enableSorting: false,
+      size: 110,
+      cell: ({ row }) => {
+        // Level tag (LFE-10596): trace- vs observation- (vs session-) level
+        // scores look identical here otherwise.
+        const level: ScoresTableRow["level"] = row.getValue("level");
+        return <ScoreTag level={level} />;
+      },
+    },
+    {
+      accessorKey: "comment",
+      header: "Comment",
+      id: "comment",
+      enableHiding: true,
+      size: 400,
+      loadingCell: () => (
+        <IOTableCell
+          isLoading
+          data={undefined}
+          singleLine={rowHeight === "s"}
+        />
+      ),
+      cell: ({ row }) => {
+        const value = row.getValue("comment") as ScoresTableRow["comment"];
+        return (
+          !!value && <IOTableCell data={value} singleLine={rowHeight === "s"} />
+        );
+      },
+    },
+    {
+      accessorKey: "environment",
+      header: "Environment",
+      id: "environment",
+      size: 150,
+      enableHiding: true,
+      defaultHidden: true,
+      loadingCell: <TableBadgeLoadingCell />,
+      cell: ({ row }) => {
+        const value = row.getValue("environment") as string | undefined;
+        return value ? (
+          <Badge
+            variant="secondary"
+            className="max-w-fit truncate rounded-sm px-1 font-normal"
+            title={value}
+          >
+            {value}
+          </Badge>
+        ) : null;
+      },
+    },
+    {
+      accessorKey: "traceTags",
+      id: "traceTags",
+      header: "Trace Tags",
+      size: 250,
+      enableHiding: true,
+      defaultHidden: true,
+      loadingCell: <TableTextLoadingCell />,
+      cell: ({ row }) => {
+        if (isBetaEnabled && !scoreMetrics.data)
+          return <TableTextLoadingCell />;
+        const traceTags: string[] | undefined = row.getValue("traceTags");
+        return (
+          traceTags &&
+          traceTags.length > 0 && (
+            <div
+              className={cn(
+                "flex gap-x-2 gap-y-1",
+                rowHeight !== "s" && "flex-wrap",
+              )}
+            >
+              <TagList selectedTags={traceTags} isLoading={false} viewOnly />
+            </div>
+          )
+        );
+      },
+    },
+    {
+      accessorKey: "metadata",
+      header: "Metadata",
+      id: "metadata",
+      size: 400,
+      loadingCell: () => (
+        <IOTableCell
+          isLoading
+          data={undefined}
+          singleLine={rowHeight === "s"}
+        />
+      ),
+      headerTooltip: {
+        description: "Add metadata to scores to track additional information.",
+        // TODO: docs for metadata on scores
+        href: "https://langfuse.com/docs/observability/features/metadata",
+      },
+      cell: ({ row }) => {
+        const scoreId: ScoresTableRow["id"] = row.getValue("id");
+        return (
+          <ScoresMetadataCell
+            scoreId={scoreId}
+            projectId={projectId}
+            singleLine={rowHeight === "s"}
+          />
+        );
+      },
+      enableHiding: true,
+      defaultHidden: true,
+    },
+    {
       accessorKey: "traceName",
       header: "Trace Name",
       id: "traceName",
       enableHiding: true,
       enableSorting: true,
+      defaultHidden: true,
       size: 150,
       loadingCell: <TableTextLoadingCell />,
       cell: ({ row }) => {
@@ -491,24 +698,6 @@ export default function ScoresTable({
       },
     },
     {
-      accessorKey: "executionTraceId",
-      id: "executionTraceId",
-      header: "Execution Trace",
-      enableSorting: false,
-      enableHiding: true,
-      defaultHidden: true,
-      size: 100,
-      cell: ({ row }) => {
-        const value = row.getValue("executionTraceId");
-        return typeof value === "string" ? (
-          <TableLink
-            path={`/project/${projectId}/traces/${encodeURIComponent(value)}`}
-            value={value}
-          />
-        ) : undefined;
-      },
-    },
-    {
       accessorKey: "observationId",
       id: "observationId",
       header: "Observation",
@@ -523,6 +712,24 @@ export default function ScoresTable({
           <TableLink
             path={`/project/${projectId}/traces/${encodeURIComponent(traceId)}?observation=${encodeURIComponent(observationId)}`}
             value={observationId}
+          />
+        ) : undefined;
+      },
+    },
+    {
+      accessorKey: "executionTraceId",
+      id: "executionTraceId",
+      header: "Execution Trace",
+      enableSorting: false,
+      enableHiding: true,
+      defaultHidden: true,
+      size: 100,
+      cell: ({ row }) => {
+        const value = row.getValue("executionTraceId");
+        return typeof value === "string" ? (
+          <TableLink
+            path={`/project/${projectId}/traces/${encodeURIComponent(value)}`}
+            value={value}
           />
         ) : undefined;
       },
@@ -545,25 +752,6 @@ export default function ScoresTable({
       },
     },
     {
-      accessorKey: "environment",
-      header: "Environment",
-      id: "environment",
-      size: 150,
-      enableHiding: true,
-      loadingCell: <TableBadgeLoadingCell />,
-      cell: ({ row }) => {
-        const value = row.getValue("environment") as string | undefined;
-        return value ? (
-          <Badge
-            variant="secondary"
-            className="max-w-fit truncate rounded-sm px-1 font-normal"
-          >
-            {value}
-          </Badge>
-        ) : null;
-      },
-    },
-    {
       accessorKey: "userId",
       header: "User",
       id: "userId",
@@ -573,6 +761,7 @@ export default function ScoresTable({
       },
       enableHiding: true,
       enableSorting: true,
+      defaultHidden: true,
       size: 100,
       loadingCell: <TableTextLoadingCell />,
       cell: ({ row }) => {
@@ -590,103 +779,11 @@ export default function ScoresTable({
       },
     },
     {
-      accessorKey: "timestamp",
-      header: "Timestamp",
-      id: "timestamp",
-      enableHiding: true,
-      enableSorting: true,
-      size: 150,
-      cell: ({ row }) => {
-        const value: ScoresTableRow["timestamp"] = row.getValue("timestamp");
-        return value ? <LocalIsoDate date={value} /> : undefined;
-      },
-    },
-    {
-      accessorKey: "source",
-      header: "Source",
-      id: "source",
-      enableHiding: true,
-      enableSorting: true,
-      size: 100,
-    },
-    {
-      accessorKey: "name",
-      header: "Name",
-      id: "name",
-      enableHiding: true,
-      enableSorting: true,
-      size: 150,
-    },
-    {
-      accessorKey: "dataType",
-      header: "Data Type",
-      id: "dataType",
-      enableHiding: true,
-      enableSorting: true,
-      size: 100,
-    },
-    {
-      accessorKey: "value",
-      header: "Value",
-      id: "value",
-      enableHiding: true,
-      enableSorting: true,
-      size: 100,
-    },
-    {
-      accessorKey: "metadata",
-      header: "Metadata",
-      id: "metadata",
-      size: 400,
-      loadingCell: () => (
-        <IOTableCell
-          isLoading
-          data={undefined}
-          singleLine={rowHeight === "s"}
-        />
-      ),
-      headerTooltip: {
-        description: "Add metadata to scores to track additional information.",
-        // TODO: docs for metadata on scores
-        href: "https://langfuse.com/docs/observability/features/metadata",
-      },
-      cell: ({ row }) => {
-        const scoreId: ScoresTableRow["id"] = row.getValue("id");
-        return (
-          <ScoresMetadataCell
-            scoreId={scoreId}
-            projectId={projectId}
-            singleLine={rowHeight === "s"}
-          />
-        );
-      },
-      enableHiding: true,
-    },
-    {
-      accessorKey: "comment",
-      header: "Comment",
-      id: "comment",
-      enableHiding: true,
-      size: 400,
-      loadingCell: () => (
-        <IOTableCell
-          isLoading
-          data={undefined}
-          singleLine={rowHeight === "s"}
-        />
-      ),
-      cell: ({ row }) => {
-        const value = row.getValue("comment") as ScoresTableRow["comment"];
-        return (
-          !!value && <IOTableCell data={value} singleLine={rowHeight === "s"} />
-        );
-      },
-    },
-    {
       accessorKey: "author",
       id: "author",
       header: "Author",
       enableHiding: true,
+      defaultHidden: true,
       size: 150,
       cell: ({ row }) => {
         const { userId, name, image } = row.getValue(
@@ -715,6 +812,7 @@ export default function ScoresTable({
       },
       enableHiding: true,
       enableSorting: false,
+      defaultHidden: true,
       size: 150,
       cell: ({ row }) => {
         const value = row.getValue("jobConfigurationId");
@@ -726,32 +824,6 @@ export default function ScoresTable({
             />
           </>
         ) : undefined;
-      },
-    },
-    {
-      accessorKey: "traceTags",
-      id: "traceTags",
-      header: "Trace Tags",
-      size: 250,
-      enableHiding: true,
-      defaultHidden: true,
-      loadingCell: <TableTextLoadingCell />,
-      cell: ({ row }) => {
-        if (isBetaEnabled && !scoreMetrics.data)
-          return <TableTextLoadingCell />;
-        const traceTags: string[] | undefined = row.getValue("traceTags");
-        return (
-          traceTags && (
-            <div
-              className={cn(
-                "flex gap-x-2 gap-y-1",
-                rowHeight !== "s" && "flex-wrap",
-              )}
-            >
-              <TagList selectedTags={traceTags} isLoading={false} viewOnly />
-            </div>
-          )
-        );
       },
     },
   ];
@@ -798,6 +870,7 @@ export default function ScoresTable({
       timestamp: score.timestamp,
       source: score.source,
       name: score.name,
+      level: scoreLevelFromScore(score),
       dataType: score.dataType,
       value:
         isNumericDataType(score.dataType) && isPresent(score.value)
@@ -813,6 +886,7 @@ export default function ScoresTable({
       comment: score.comment ?? undefined,
       observationId: score.observationId ?? undefined,
       sessionId: score.sessionId ?? undefined,
+      datasetRunId: score.datasetRunId ?? undefined,
       traceId: score.traceId ?? undefined,
       traceName: score.traceName ?? undefined,
       userId: score.traceUserId ?? undefined,
@@ -843,6 +917,7 @@ export default function ScoresTable({
         timestamp: score.timestamp,
         source: score.source,
         name: score.name,
+        level: scoreLevelFromScore(score),
         dataType: score.dataType,
         value:
           isNumericDataType(score.dataType) && isPresent(score.value)
@@ -858,6 +933,7 @@ export default function ScoresTable({
         comment: score.comment ?? undefined,
         observationId: score.observationId ?? undefined,
         sessionId: score.sessionId ?? undefined,
+        datasetRunId: score.datasetRunId ?? undefined,
         traceId: score.traceId ?? undefined,
         traceName: meta?.traceName ?? undefined,
         userId: meta?.userId ?? undefined,
@@ -876,15 +952,32 @@ export default function ScoresTable({
     stateUpdaters: {
       setOrderBy: setOrderByState,
       setFilters: setFiltersWrapper,
+      setExpandedFilters: queryFilter.onExpandedChange,
       setColumnOrder: setColumnOrder,
       setColumnVisibility: setColumnVisibility,
     },
     validationContext: {
       columns,
       filterColumnDefinition: scoresFilterConfig.columnDefinitions,
+      expandableFilterColumns: scoresFilterConfig.facets.map(
+        (facet) => facet.column,
+      ),
     },
     currentFilterState: queryFilter.explicitFilterState,
+    currentExpandedFilters: queryFilter.expanded,
   });
+
+  const visibleSelectedScoreIds = useMemo(
+    () =>
+      Object.keys(selectedRows).filter((scoreId) =>
+        scores.data?.scores.map((s) => s.id).includes(scoreId),
+      ),
+    [selectedRows, scores.data?.scores],
+  );
+
+  const selectedScoreCount = selectAll
+    ? totalCount
+    : visibleSelectedScoreIds.length;
 
   return (
     <DataTableControlsProvider
@@ -892,6 +985,12 @@ export default function ScoresTable({
       defaultSidebarCollapsed={scoresFilterConfig.defaultSidebarCollapsed}
     >
       <div className="flex h-full w-full flex-col">
+        {showControlsInPageHeader && (
+          <TableHeaderControls
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+          />
+        )}
         {/* Toolbar spanning full width */}
         <DataTableToolbar
           columns={columns}
@@ -906,14 +1005,17 @@ export default function ScoresTable({
             controllers: viewControllers,
           }}
           actionButtons={[
-            Object.keys(selectedRows).filter((scoreId) =>
-              scores.data?.scores.map((s) => s.id).includes(scoreId),
-            ).length > 0 ? (
+            visibleSelectedScoreIds.length > 0 || selectAll ? (
               <TableActionMenu
                 key="scores-multi-select-actions"
                 projectId={projectId}
                 actions={tableActions}
                 tableName={BatchExportTableName.Scores}
+                selectedCount={selectedScoreCount}
+                onClearSelection={() => {
+                  setSelectedRows({});
+                  setSelectAll(false);
+                }}
               />
             ) : null,
             <BatchExportTableButton
@@ -924,14 +1026,16 @@ export default function ScoresTable({
           ]}
           rowHeight={rowHeight}
           setRowHeight={setRowHeight}
-          timeRange={timeRange}
-          setTimeRange={setTimeRange}
+          timeRange={
+            showControlsInPageHeader || isTraceScoped ? undefined : timeRange
+          }
+          setTimeRange={
+            showControlsInPageHeader || isTraceScoped ? undefined : setTimeRange
+          }
           multiSelect={{
             selectAll,
             setSelectAll,
-            selectedRowIds: Object.keys(selectedRows).filter((scoreId) =>
-              scores.data?.scores.map((s) => s.id).includes(scoreId),
-            ),
+            selectedRowIds: visibleSelectedScoreIds,
             setRowSelection: setSelectedRows,
             totalCount,
             ...paginationState,
@@ -940,11 +1044,15 @@ export default function ScoresTable({
 
         {/* Content area with sidebar and table */}
         <ResizableFilterLayout>
-          <DataTableControls queryFilter={queryFilter} />
+          <DataTableControls
+            // Remount the sidebar when the saved view changes so the new view's filters replace any stale draft UI state.
+            key={viewControllers.selectedViewId ?? "no-view"}
+            queryFilter={queryFilter}
+          />
 
           <div className="flex flex-1 flex-col overflow-hidden">
             <DataTable
-              tableName={"scores"}
+              tableName="scores"
               columns={columns}
               noResultsMessage={
                 <div className="flex flex-col items-center">
@@ -982,6 +1090,7 @@ export default function ScoresTable({
               setOrderBy={setOrderByState}
               orderBy={orderByState}
               rowSelection={selectedRows}
+              highlightAllRows={selectAll}
               setRowSelection={setSelectedRows}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}

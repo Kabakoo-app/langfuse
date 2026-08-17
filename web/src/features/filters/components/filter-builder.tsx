@@ -52,10 +52,6 @@ import { NonEmptyString } from "@langfuse/shared";
 import { cn } from "@/src/utils/tailwind";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import {
-  formatSessionPositionInTraceFilterValue,
-  getSessionPositionInTraceFilterMode,
-} from "@/src/components/session/session-position-in-trace";
-import {
   InputCommand,
   InputCommandEmpty,
   InputCommandGroup,
@@ -286,7 +282,18 @@ export function InlineFilterState({
           : ""}{" "}
         {filter.operator}{" "}
         {filter.type === "positionInTrace"
-          ? formatSessionPositionInTraceFilterValue(filter)
+          ? (() => {
+              const mode = filter.key ?? "last";
+              const label =
+                mode === "root"
+                  ? "root"
+                  : mode === "last"
+                    ? "last"
+                    : mode === "nthFromStart"
+                      ? `nth from start ${filter.value ?? ""}`.trim()
+                      : `nth from end ${filter.value ?? ""}`.trim();
+              return label;
+            })()
           : filter.type === "datetime"
             ? new Date(filter.value).toLocaleString()
             : filter.type === "stringOptions" || filter.type === "arrayOptions"
@@ -330,24 +337,18 @@ export function InlineFilterBuilder({
   const [wipFilterState, _setWipFilterState] =
     useState<WipFilterState>(filterState);
 
-  // Sync wipFilterState when filterState prop changes externally
-  // (e.g., when a view changes resets filters or default filters are excluded)
-  // We use a ref to track previous filterState to avoid re-running when wipFilterState changes
-  const prevFilterStateRef = useRef(filterState);
+  // sync filter state, e.g. when we exclude default LF filters on score creation to reflect in UI
+  // Only sync if we don't have any WIP (invalid) filters, to avoid overwriting user's work-in-progress
   useEffect(() => {
-    // Only sync if filterState actually changed (reference comparison is fine here
-    // since filterState comes from parent state which creates new arrays on change)
-    if (prevFilterStateRef.current === filterState) return;
-    prevFilterStateRef.current = filterState;
+    const hasWipFilters = wipFilterState.some(
+      (f) => !singleFilter.safeParse(f).success,
+    );
 
-    _setWipFilterState((currentWip) => {
-      const hasWipFilters = currentWip.some(
-        (f) => !singleFilter.safeParse(f).success,
-      );
-      // Don't sync if user is actively editing (has invalid WIP filters)
-      return hasWipFilters ? currentWip : filterState;
-    });
-  }, [filterState]);
+    // Don't sync if we have WIP filters - user is actively editing
+    if (!hasWipFilters) {
+      _setWipFilterState(filterState);
+    }
+  }, [filterState, wipFilterState]);
 
   const setWipFilterState = (
     state: ((prev: WipFilterState) => WipFilterState) | WipFilterState,
@@ -595,11 +596,7 @@ function FilterBuilderForm({
             <tbody>
               {filterState.map((filter, i) => {
                 const column = columns.find(
-                  (c) =>
-                    c.id === filter.column ||
-                    c.name === filter.column ||
-                    (filter.column !== undefined &&
-                      c.aliases?.includes(filter.column)),
+                  (c) => c.id === filter.column || c.name === filter.column,
                 );
                 return (
                   <tr key={i}>
@@ -801,13 +798,13 @@ function FilterBuilderForm({
                               i,
                             );
                           }}
-                          value={getSessionPositionInTraceFilterMode(filter)}
+                          value={filter.key ?? "last"}
                         >
                           <SelectTrigger className="min-w-[140px]">
                             <SelectValue placeholder="" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="first">1st</SelectItem>
+                            <SelectItem value="root">1st</SelectItem>
                             <SelectItem value="last">last</SelectItem>
                             <SelectItem value="nthFromStart">
                               nth from start
@@ -874,13 +871,7 @@ function FilterBuilderForm({
                           value={filter.value ?? undefined}
                           disabled={disabled}
                           type="number"
-                          step={
-                            (column?.type === "number" && column.step) || 0.01
-                          }
-                          min={
-                            column?.type === "number" ? column.min : undefined
-                          }
-                          placeholder="number"
+                          step="0.01"
                           lang="en-US"
                           onChange={(e) =>
                             handleFilterChange(

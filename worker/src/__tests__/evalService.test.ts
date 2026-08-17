@@ -6,7 +6,7 @@ import {
   EvalTargetObject,
 } from "@langfuse/shared";
 import { encrypt } from "@langfuse/shared/encryption";
-import { prisma } from "@langfuse/shared/src/db";
+import { kyselyPrisma, prisma } from "@langfuse/shared/src/db";
 import {
   convertDateToClickhouseDateTime,
   createObservation,
@@ -23,6 +23,7 @@ import {
 } from "@langfuse/shared/src/server";
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
+import { sql } from "kysely";
 import { afterEach } from "node:test";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { compileTemplateString } from "../features/utils/utilities";
@@ -616,15 +617,17 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       expect(jobs[0].status.toString()).toBe("PENDING");
-      expect(jobs[0].startTime).not.toBeNull();
+      expect(jobs[0].start_time).not.toBeNull();
     }, 10_000);
 
     test("creates new 'dataset' eval job", async () => {
@@ -652,23 +655,25 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         updated_at: convertDateToClickhouseDateTime(new Date()),
       });
 
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId,
-          sourceTraceId: traceId,
-          sourceObservationId: observationId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId,
+          source_trace_id: traceId,
+          source_observation_id: observationId,
+        })
+        .execute();
 
       await prisma.jobConfiguration.create({
         data: {
@@ -697,17 +702,19 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
-      expect(jobs[0].jobInputObservationId).toBe(observationId);
-      expect(jobs[0].jobInputDatasetItemId).toBe(datasetItemId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
+      expect(jobs[0].job_input_observation_id).toBe(observationId);
+      expect(jobs[0].job_input_dataset_item_id).toBe(datasetItemId);
       expect(jobs[0].status.toString()).toBe("PENDING");
-      expect(jobs[0].startTime).not.toBeNull();
+      expect(jobs[0].start_time).not.toBeNull();
     }, 10_000);
 
     test("handle dataset upsert with cached traces", async () => {
@@ -724,22 +731,24 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         updated_at: convertDateToClickhouseDateTime(new Date()),
       });
 
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId,
-          sourceTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId,
+          source_trace_id: traceId,
+        })
+        .execute();
 
       await prisma.jobConfiguration.create({
         data: {
@@ -799,30 +808,33 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const datasetItemId = randomUUID();
       const datasetRunId = randomUUID();
 
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId,
+        })
+        .execute();
 
-      await prisma.datasetRuns.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_runs")
+        .values({
           id: datasetRunId,
           name: randomUUID(),
-          datasetId,
-          projectId,
-        },
-      });
+          dataset_id: datasetId,
+          project_id: projectId,
+        })
+        .execute();
 
       // Create a clickhouse run item
       await createDatasetRunItemsCh([
@@ -862,9 +874,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobsAfterDataset = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobsAfterDataset = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       // No jobs should have been created.
       expect(jobsAfterDataset.length).toBe(0);
@@ -889,16 +903,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobsAfterTrace = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobsAfterTrace = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobsAfterTrace.length).toBe(1);
-      expect(jobsAfterTrace[0].projectId).toBe(projectId);
-      expect(jobsAfterTrace[0].jobInputTraceId).toBe(traceId);
-      expect(jobsAfterTrace[0].jobInputDatasetItemId).toBe(datasetItemId);
+      expect(jobsAfterTrace[0].project_id).toBe(projectId);
+      expect(jobsAfterTrace[0].job_input_trace_id).toBe(traceId);
+      expect(jobsAfterTrace[0].job_input_dataset_item_id).toBe(datasetItemId);
       expect(jobsAfterTrace[0].status.toString()).toBe("PENDING");
-      expect(jobsAfterTrace[0].startTime).not.toBeNull();
+      expect(jobsAfterTrace[0].start_time).not.toBeNull();
     }, 10_000);
 
     test("creates a new eval job for a dataset only if trace _and_ dataset are available", async () => {
@@ -907,13 +923,14 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const datasetId = randomUUID();
       const datasetItemId = randomUUID();
 
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
       // Create the trace and send the trace event. No job should be created
       await upsertTrace({
@@ -950,22 +967,25 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobsAfterDataset = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobsAfterDataset = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       // No jobs should have been created.
       expect(jobsAfterDataset.length).toBe(0);
 
       // Now, create the dataset item and validate that the job was created.
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId,
-          sourceTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId,
+          source_trace_id: traceId,
+        })
+        .execute();
 
       const payloadDataset = {
         projectId,
@@ -979,16 +999,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobsAfterTrace = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobsAfterTrace = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobsAfterTrace.length).toBe(1);
-      expect(jobsAfterTrace[0].projectId).toBe(projectId);
-      expect(jobsAfterTrace[0].jobInputTraceId).toBe(traceId);
-      expect(jobsAfterTrace[0].jobInputDatasetItemId).toBe(datasetItemId);
+      expect(jobsAfterTrace[0].project_id).toBe(projectId);
+      expect(jobsAfterTrace[0].job_input_trace_id).toBe(traceId);
+      expect(jobsAfterTrace[0].job_input_dataset_item_id).toBe(datasetItemId);
       expect(jobsAfterTrace[0].status.toString()).toBe("PENDING");
-      expect(jobsAfterTrace[0].startTime).not.toBeNull();
+      expect(jobsAfterTrace[0].start_time).not.toBeNull();
     }, 10_000);
 
     test("does not create job for 'event' config", async () => {
@@ -1021,9 +1043,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1058,9 +1082,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1095,9 +1121,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1114,17 +1142,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         updated_at: convertDateToClickhouseDateTime(new Date()),
       });
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       await prisma.jobConfiguration.create({
         data: {
@@ -1156,16 +1185,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       }); // calling it twice to check it is only generated once
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       expect(jobs[0].status.toString()).toBe("PENDING");
-      expect(jobs[0].startTime).not.toBeNull();
-      expect(jobs[0].endTime).to.be.null;
+      expect(jobs[0].start_time).not.toBeNull();
+      expect(jobs[0].end_time).to.be.null;
     }, 10_000);
 
     test("does not create job for inactive config", async () => {
@@ -1198,9 +1229,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1209,17 +1242,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const { projectId } = await createOrgProjectAndApiKey();
       const traceId = randomUUID();
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       await prisma.jobConfiguration.create({
         data: {
@@ -1246,9 +1280,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1266,35 +1302,37 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         updated_at: convertDateToClickhouseDateTime(new Date()),
       });
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       await prisma.jobConfiguration.create({
         data: {
@@ -1348,16 +1386,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       }); // calling it twice to check it is only generated once
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       expect(jobs[0].status.toString()).toBe("CANCELLED");
-      expect(jobs[0].startTime).not.toBeNull();
-      expect(jobs[0].endTime).not.toBeNull();
+      expect(jobs[0].start_time).not.toBeNull();
+      expect(jobs[0].end_time).not.toBeNull();
     }, 10_000);
 
     test("does not create eval job for existing traces if time scope is EXISTING but handler enforces NEW only", async () => {
@@ -1415,15 +1455,16 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         enforcedJobTimeScope: "NEW", // the config must contain NEW
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: {
-          projectId,
-          jobConfigurationId: {
-            in: [jobConfiguration.id, jobConfiguration2.id],
-          },
-          jobInputTraceId: traceId,
-        },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .where("job_configuration_id", "in", [
+          jobConfiguration.id,
+          jobConfiguration2.id,
+        ])
+        .where("job_input_trace_id", "=", traceId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -1470,13 +1511,13 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         enforcedJobTimeScope: "NEW", // the config must contain NEW
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: {
-          projectId,
-          jobConfigurationId: { in: [jobConfiguration.id] },
-          jobInputTraceId: traceId,
-        },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .where("job_configuration_id", "in", [jobConfiguration.id])
+        .where("job_input_trace_id", "=", traceId)
+        .execute();
 
       expect(jobs.length).toBe(1);
     }, 10_000);
@@ -1517,9 +1558,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
     }, 10_000);
@@ -1542,45 +1585,48 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Create three datasets
-      await prisma.dataset.createMany({
-        data: [
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values([
           {
             id: datasetId1,
-            projectId,
+            project_id: projectId,
             name: "dataset-alpha",
           },
           {
             id: datasetId2,
-            projectId,
+            project_id: projectId,
             name: "dataset-beta",
           },
           {
             id: datasetId3,
-            projectId,
+            project_id: projectId,
             name: "dataset-gamma",
           },
-        ],
-      });
+        ])
+        .execute();
 
       // Create dataset item that matches the second dataset filter
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId: datasetId2,
-          sourceTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId2,
+          source_trace_id: traceId,
+        })
+        .execute();
 
       // Used if ClickHouse reads are disabled.
-      await prisma.datasetRuns.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_runs")
+        .values({
           id: datasetRunId,
-          projectId,
+          project_id: projectId,
           name: randomUUID(),
-          datasetId: datasetId2,
-        },
-      });
+          dataset_id: datasetId2,
+        })
+        .execute();
 
       // Create a clickhouse run item that references dataset 2 and the new trace.
       await createDatasetRunItemsCh([
@@ -1661,24 +1707,27 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       // Should create exactly one job for the matching dataset (dataset-beta)
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
-      expect(jobs[0].jobInputDatasetItemId).toBe(datasetItemId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
+      expect(jobs[0].job_input_dataset_item_id).toBe(datasetItemId);
       expect(jobs[0].status.toString()).toBe("PENDING");
 
       // Verify it's the correct config by checking the score name
-      const config = await prisma.jobConfiguration.findFirstOrThrow({
-        select: { scoreName: true },
-        where: { id: jobs[0].jobConfigurationId },
-      });
+      const config = await kyselyPrisma.$kysely
+        .selectFrom("job_configurations")
+        .select("score_name")
+        .where("id", "=", jobs[0].job_configuration_id)
+        .executeTakeFirstOrThrow();
 
-      expect(config.scoreName).toBe("score-beta");
+      expect(config.score_name).toBe("score-beta");
     }, 10_000);
 
     test("creates no dataset eval jobs with cached dataset item filtering - negative match", async () => {
@@ -1697,30 +1746,32 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Create four datasets
-      await prisma.dataset.createMany({
-        data: [
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values([
           {
             id: datasetId1,
-            projectId,
+            project_id: projectId,
             name: "dataset-alpha",
           },
           {
             id: datasetId2,
-            projectId,
+            project_id: projectId,
             name: "dataset-beta",
           },
-        ],
-      });
+        ])
+        .execute();
 
       // Create dataset item that matches none of the config filters (dataset-delta)
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId: datasetId1,
-          sourceTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId1,
+          source_trace_id: traceId,
+        })
+        .execute();
 
       // Create a clickhouse run item that references a non-existing dataset and the new trace.
       await createDatasetRunItemsCh([
@@ -1782,9 +1833,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         jobTimestamp,
       });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       // Should create no jobs since dataset-delta doesn't match any filter
       expect(jobs.length).toBe(0);
@@ -1809,22 +1862,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -1850,28 +1904,30 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       const jobExecutionId = randomUUID();
 
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "PENDING",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'PENDING'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -1881,16 +1937,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       await evaluate({ event: payload });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       expect(jobs[0].status.toString()).toBe("COMPLETED");
-      expect(jobs[0].startTime).not.toBeNull();
-      expect(jobs[0].endTime).not.toBeNull();
+      expect(jobs[0].start_time).not.toBeNull();
+      expect(jobs[0].end_time).not.toBeNull();
     }, 50_000);
 
     test("fails to eval without llm api key", async () => {
@@ -1898,22 +1956,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const traceId = randomUUID();
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -1939,16 +1998,17 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       const jobExecutionId = randomUUID();
 
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "PENDING",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'PENDING'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -1962,13 +2022,15 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         ),
       );
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       // the job will be failed when the exception is caught in the worker consumer
       expect(jobs[0].status.toString()).toBe("PENDING");
     }, 10_000);
@@ -1991,22 +2053,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -2032,28 +2095,30 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       const jobExecutionId = randomUUID();
 
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "PENDING",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'PENDING'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -2071,13 +2136,15 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         }),
       );
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       // the job will be failed when the exception is caught in the worker consumer
       expect(jobs[0].status.toString()).toBe("PENDING");
     }, 10_000);
@@ -2087,22 +2154,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const traceId = randomUUID();
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -2127,16 +2195,17 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       const jobExecutionId = randomUUID();
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "CANCELLED",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'CANCELLED'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -2146,9 +2215,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       await evaluate({ event: payload });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -2159,22 +2230,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const traceId = randomUUID();
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -2200,28 +2272,30 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       const jobExecutionId = randomUUID();
 
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "PENDING",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'PENDING'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -2231,16 +2305,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       await evaluate({ event: payload });
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       expect(jobs[0].status.toString()).toBe("COMPLETED");
-      expect(jobs[0].startTime).not.toBeNull();
-      expect(jobs[0].endTime).not.toBeNull();
+      expect(jobs[0].start_time).not.toBeNull();
+      expect(jobs[0].end_time).not.toBeNull();
     }, 20_000);
 
     test("handles LLM timeout gracefully", async () => {
@@ -2265,22 +2341,23 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       const templateId = randomUUID();
-      await prisma.evalTemplate.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("eval_templates")
+        .values({
           id: templateId,
-          projectId,
+          project_id: projectId,
           name: "test-template",
           version: 1,
           prompt: "Please evaluate toxicity {{input}} {{output}}",
           model: "gpt-3.5-turbo",
           provider: "openai",
-          modelParams: {},
-          outputDefinition: {
+          model_params: {},
+          output_schema: {
             reasoning: "Please explain your reasoning",
             score: "Please provide a score between 0 and 1",
           },
-        },
-      });
+        })
+        .executeTakeFirst();
 
       const jobConfiguration = await prisma.jobConfiguration.create({
         data: {
@@ -2306,28 +2383,30 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
       const jobExecutionId = randomUUID();
 
-      await prisma.jobExecution.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("job_executions")
+        .values({
           id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          status: "PENDING",
-          startTime: new Date(),
-          jobInputTraceId: traceId,
-        },
-      });
+          project_id: projectId,
+          job_configuration_id: jobConfiguration.id,
+          status: sql`'PENDING'::"JobExecutionStatus"`,
+          start_time: new Date(),
+          job_input_trace_id: traceId,
+        })
+        .execute();
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       const payload = {
         projectId,
@@ -2340,13 +2419,15 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         /timeout/i,
       );
 
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].projectId).toBe(projectId);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].project_id).toBe(projectId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
       // Job should still be PENDING because the error will be handled by the queue processor
       expect(jobs[0].status.toString()).toBe("PENDING");
 
@@ -2362,23 +2443,25 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const datasetItemId = randomUUID();
       const traceId = randomUUID();
 
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
           input: { input: "This is a great prompt" },
-          expectedOutput: { expected_output: "This is a great response" },
-          projectId,
-          datasetId,
-        },
-      });
+          expected_output: { expected_output: "This is a great response" },
+          project_id: projectId,
+          dataset_id: datasetId,
+        })
+        .execute();
 
       const variableMapping = variableMappingList.parse([
         {
@@ -2777,277 +2860,17 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       },
       10_000,
     );
-
-    test("extracts variables from a versioned dataset item using datasetItemValidFrom", async () => {
-      const { projectId } = await createOrgProjectAndApiKey();
-      const traceId = randomUUID();
-      const datasetId = randomUUID();
-      const datasetItemId = randomUUID();
-      const validFromV1 = new Date("2024-01-01T00:00:00.000Z");
-      const validFromV2 = new Date("2024-06-01T00:00:00.000Z");
-
-      await upsertTrace({
-        id: traceId,
-        project_id: projectId,
-        user_id: "a",
-        environment: "production",
-        input: JSON.stringify({ input: "trace input" }),
-        output: JSON.stringify({ output: "trace output" }),
-        timestamp: convertDateToClickhouseDateTime(new Date()),
-        created_at: convertDateToClickhouseDateTime(new Date()),
-        updated_at: convertDateToClickhouseDateTime(new Date()),
-      });
-
-      await prisma.dataset.create({
-        data: {
-          id: datasetId,
-          name: `dataset-versioned-${randomUUID()}`,
-          projectId,
-        },
-      });
-
-      // Create version 1 (superseded) with validTo set
-      await prisma.datasetItem.create({
-        data: {
-          id: datasetItemId,
-          input: { input: "v1 input" },
-          expectedOutput: { expected_output: "v1 expected output" },
-          projectId,
-          datasetId,
-          validFrom: validFromV1,
-          validTo: validFromV2,
-        },
-      });
-
-      // Create version 2 (current) with validTo = null
-      await prisma.datasetItem.create({
-        data: {
-          id: datasetItemId,
-          input: { input: "v2 input" },
-          expectedOutput: { expected_output: "v2 expected output" },
-          projectId,
-          datasetId,
-          validFrom: validFromV2,
-          validTo: null,
-        },
-      });
-
-      const variableMapping = variableMappingList.parse([
-        {
-          langfuseObject: "dataset_item",
-          selectedColumnId: "expected_output",
-          templateVariable: "output",
-        },
-      ]);
-
-      // When datasetItemValidFrom is provided, it should return the exact version
-      const resultV1 = await extractVariablesFromTracingData({
-        projectId,
-        variables: ["output"],
-        traceId,
-        datasetItemId,
-        datasetItemValidFrom: validFromV1,
-        variableMapping,
-      });
-
-      expect(resultV1).toEqual([
-        {
-          value: '{"expected_output":"v1 expected output"}',
-          var: "output",
-        },
-      ]);
-
-      // When datasetItemValidFrom is NOT provided, it should return the latest (validTo = null)
-      const resultLatest = await extractVariablesFromTracingData({
-        projectId,
-        variables: ["output"],
-        traceId,
-        datasetItemId,
-        variableMapping,
-      });
-
-      expect(resultLatest).toEqual([
-        {
-          value: '{"expected_output":"v2 expected output"}',
-          var: "output",
-        },
-      ]);
-    }, 10_000);
-
-    test("extracts variables from a dataset item using jsonSelector", async () => {
-      const { projectId } = await createOrgProjectAndApiKey();
-      const traceId = randomUUID();
-      const datasetId = randomUUID();
-      const datasetItemId = randomUUID();
-
-      await upsertTrace({
-        id: traceId,
-        project_id: projectId,
-        user_id: "a",
-        environment: "production",
-        input: JSON.stringify({ input: "trace input" }),
-        output: JSON.stringify({ output: "trace output" }),
-        timestamp: convertDateToClickhouseDateTime(new Date()),
-        created_at: convertDateToClickhouseDateTime(new Date()),
-        updated_at: convertDateToClickhouseDateTime(new Date()),
-      });
-
-      await prisma.dataset.create({
-        data: {
-          id: datasetId,
-          name: `dataset-json-${randomUUID()}`,
-          projectId,
-        },
-      });
-
-      await prisma.datasetItem.create({
-        data: {
-          id: datasetItemId,
-          input: {
-            messages: [
-              { role: "system", content: "You are a helpful assistant" },
-              { role: "user", content: "Hello world" },
-            ],
-          },
-          expectedOutput: {
-            nested: {
-              score: 0.95,
-              label: "positive",
-            },
-          },
-          projectId,
-          datasetId,
-        },
-      });
-
-      // Test jsonSelector on input - extract nested array element
-      const variableMappingInput = variableMappingList.parse([
-        {
-          langfuseObject: "dataset_item",
-          selectedColumnId: "input",
-          templateVariable: "user_message",
-          jsonSelector: "$.messages[1].content",
-        },
-      ]);
-
-      const resultInput = await extractVariablesFromTracingData({
-        projectId,
-        variables: ["user_message"],
-        traceId,
-        datasetItemId,
-        variableMapping: variableMappingInput,
-      });
-
-      expect(resultInput).toEqual([
-        {
-          value: "Hello world",
-          var: "user_message",
-        },
-      ]);
-
-      // Test jsonSelector on expected_output - extract nested field
-      const variableMappingOutput = variableMappingList.parse([
-        {
-          langfuseObject: "dataset_item",
-          selectedColumnId: "expected_output",
-          templateVariable: "expected_label",
-          jsonSelector: "$.nested.label",
-        },
-      ]);
-
-      const resultOutput = await extractVariablesFromTracingData({
-        projectId,
-        variables: ["expected_label"],
-        traceId,
-        datasetItemId,
-        variableMapping: variableMappingOutput,
-      });
-
-      expect(resultOutput).toEqual([
-        {
-          value: "positive",
-          var: "expected_label",
-        },
-      ]);
-    }, 10_000);
-
-    test("extracts variables from a trace using jsonSelector", async () => {
-      const { projectId } = await createOrgProjectAndApiKey();
-      const traceId = randomUUID();
-
-      await upsertTrace({
-        id: traceId,
-        project_id: projectId,
-        user_id: "a",
-        environment: "production",
-        input: JSON.stringify({
-          messages: [{ role: "user", content: "What is the weather?" }],
-        }),
-        output: JSON.stringify({
-          response: { text: "It is sunny", confidence: 0.9 },
-        }),
-        timestamp: convertDateToClickhouseDateTime(new Date()),
-        created_at: convertDateToClickhouseDateTime(new Date()),
-        updated_at: convertDateToClickhouseDateTime(new Date()),
-      });
-
-      const variableMapping = variableMappingList.parse([
-        {
-          langfuseObject: "trace",
-          selectedColumnId: "input",
-          templateVariable: "user_input",
-          jsonSelector: "$.messages[0].content",
-        },
-        {
-          langfuseObject: "trace",
-          selectedColumnId: "output",
-          templateVariable: "response_text",
-          jsonSelector: "$.response.text",
-        },
-      ]);
-
-      const result = await extractVariablesFromTracingData({
-        projectId,
-        variables: ["user_input", "response_text"],
-        traceId,
-        variableMapping,
-      });
-
-      expect(result).toEqual([
-        {
-          value: "What is the weather?",
-          var: "user_input",
-          environment: "production",
-        },
-        {
-          value: "It is sunny",
-          var: "response_text",
-          environment: "production",
-        },
-      ]);
-    }, 10_000);
   });
 
   test("requiresDatabaseLookup correctly identifies complex filters", () => {
     // Simple filters that can be evaluated with trace data only
     const simpleFilters = [
-      {
-        column: "traceName",
-        type: "string",
-        operator: "=",
-        value: "test-trace",
-      },
+      { column: "name", type: "string", operator: "=", value: "test-trace" },
       {
         column: "environment",
         type: "string",
         operator: "=",
         value: "production",
-      },
-      {
-        column: "traceTags",
-        type: "arrayOptions",
-        operator: "any of",
-        value: ["prod"],
       },
       { column: "bookmarked", type: "boolean", operator: "=", value: true },
     ];
@@ -3063,12 +2886,7 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
 
     // Mixed filters - should return false if any filter requires observation data
     const mixedFilters = [
-      {
-        column: "traceName",
-        type: "string",
-        operator: "=",
-        value: "test-trace",
-      },
+      { column: "name", type: "string", operator: "=", value: "test-trace" },
       { column: "level", type: "string", operator: "=", value: "ERROR" }, // This requires observation data
     ];
 
@@ -3090,17 +2908,18 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
         updated_at: convertDateToClickhouseDateTime(new Date()),
       });
 
-      await prisma.llmApiKeys.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("llm_api_keys")
+        .values({
           id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
+          project_id: projectId,
+          secret_key: encrypt(String(OPENAI_API_KEY)),
           provider: "openai",
           adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
+          custom_models: [],
+          display_secret_key: "123456",
+        })
+        .execute();
 
       await prisma.evalTemplate.create({
         data: {
@@ -3112,7 +2931,7 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
           prompt: "Please evaluate: {{input}}",
           version: 1,
           vars: ["input"],
-          outputDefinition: {
+          outputSchema: {
             score: "score",
             reasoning: "reasoning",
           },
@@ -3187,107 +3006,6 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
     }, 15_000);
   });
 
-  describe("legacy eval output definition backward compatibility", () => {
-    test("executes a legacy numeric outputDefinition template", async () => {
-      const { projectId } = await createOrgProjectAndApiKey();
-      const traceId = randomUUID();
-      const jobExecutionId = randomUUID();
-      const templateId = randomUUID();
-
-      vi.mocked(fetchLLMCompletion).mockResolvedValueOnce({
-        score: 0,
-        reasoning: "The response is safe and not toxic.",
-      });
-
-      await upsertTrace({
-        id: traceId,
-        project_id: projectId,
-        user_id: "a",
-        input: JSON.stringify({ input: "This is a great prompt" }),
-        output: JSON.stringify({ output: "This is a great response" }),
-        timestamp: convertDateToClickhouseDateTime(new Date()),
-        created_at: convertDateToClickhouseDateTime(new Date()),
-        updated_at: convertDateToClickhouseDateTime(new Date()),
-      });
-
-      await prisma.evalTemplate.create({
-        data: {
-          id: templateId,
-          name: "legacy-output-definition-template",
-          projectId,
-          model: "gpt-3.5-turbo",
-          provider: "openai",
-          prompt: "Please evaluate toxicity {{input}} {{output}}",
-          version: 1,
-          vars: ["input", "output"],
-          outputDefinition: {
-            score: "Please provide a score between 0 and 1",
-            reasoning: "Please explain your reasoning",
-          },
-        },
-      });
-
-      const jobConfiguration = await prisma.jobConfiguration.create({
-        data: {
-          id: randomUUID(),
-          projectId,
-          filter: JSON.parse("[]"),
-          jobType: "EVAL",
-          delay: 0,
-          sampling: new Decimal("1"),
-          targetObject: EvalTargetObject.TRACE,
-          scoreName: "legacy-score",
-          variableMapping: JSON.parse("[]"),
-          status: "ACTIVE",
-          evalTemplateId: templateId,
-        },
-      });
-
-      await prisma.jobExecution.create({
-        data: {
-          id: jobExecutionId,
-          projectId,
-          jobConfigurationId: jobConfiguration.id,
-          jobInputTraceId: traceId,
-          jobTemplateId: templateId,
-          status: "PENDING",
-          startTime: new Date(),
-        },
-      });
-
-      await prisma.llmApiKeys.create({
-        data: {
-          id: randomUUID(),
-          projectId,
-          secretKey: encrypt(String(OPENAI_API_KEY)),
-          provider: "openai",
-          adapter: LLMAdapter.OpenAI,
-          customModels: [],
-          displaySecretKey: "123456",
-        },
-      });
-
-      await evaluate({
-        event: {
-          projectId,
-          jobExecutionId,
-        },
-      });
-
-      const updatedJobExecution = await prisma.jobExecution.findUnique({
-        where: {
-          id: jobExecutionId,
-          projectId,
-        },
-      });
-
-      expect(updatedJobExecution?.status).toBe("COMPLETED");
-      expect(updatedJobExecution?.jobOutputScoreId).toBeTruthy();
-      expect(updatedJobExecution?.executionTraceId).toBeTruthy();
-      expect(updatedJobExecution?.endTime).not.toBeNull();
-    }, 20_000);
-  });
-
   describe("internal trace environment filtering", () => {
     test("does not create eval jobs for trace-upsert with LLMJudge environment", async () => {
       const { projectId } = await createOrgProjectAndApiKey();
@@ -3332,9 +3050,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify no eval jobs were created
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -3382,9 +3102,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify no eval jobs were created
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);
@@ -3397,30 +3119,33 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       const datasetRunId = randomUUID();
 
       // Create dataset infrastructure
-      await prisma.dataset.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("datasets")
+        .values({
           id: datasetId,
-          projectId,
+          project_id: projectId,
           name: "test-dataset",
-        },
-      });
+        })
+        .execute();
 
-      await prisma.datasetItem.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_items")
+        .values({
           id: datasetItemId,
-          projectId,
-          datasetId,
-        },
-      });
+          project_id: projectId,
+          dataset_id: datasetId,
+        })
+        .execute();
 
-      await prisma.datasetRuns.create({
-        data: {
+      await kyselyPrisma.$kysely
+        .insertInto("dataset_runs")
+        .values({
           id: datasetRunId,
           name: randomUUID(),
-          datasetId,
-          projectId,
-        },
-      });
+          dataset_id: datasetId,
+          project_id: projectId,
+        })
+        .execute();
 
       // Create clickhouse run item
       await createDatasetRunItemsCh([
@@ -3473,13 +3198,15 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify eval jobs WERE created (experiments need this)
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
-      expect(jobs[0].jobInputDatasetItemId).toBe(datasetItemId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
+      expect(jobs[0].job_input_dataset_item_id).toBe(datasetItemId);
     }, 10_000);
 
     test("creates eval jobs for trace-upsert with production environment", async () => {
@@ -3525,12 +3252,14 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify eval jobs WERE created (normal traces should be evaluated)
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
     }, 10_000);
 
     test("creates eval jobs for trace-upsert with undefined environment", async () => {
@@ -3575,12 +3304,14 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify eval jobs WERE created (traces without environment should be evaluated)
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(1);
-      expect(jobs[0].jobInputTraceId).toBe(traceId);
+      expect(jobs[0].job_input_trace_id).toBe(traceId);
     }, 10_000);
 
     test("does not create eval jobs for trace-upsert with 'langfuse' environment without hyphen", async () => {
@@ -3626,9 +3357,11 @@ Respond with JSON: {"score": <number>, "reasoning": "<explanation>"}`;
       });
 
       // Verify eval jobs WERE created (only "langfuse-" prefix is blocked)
-      const jobs = await prisma.jobExecution.findMany({
-        where: { projectId },
-      });
+      const jobs = await kyselyPrisma.$kysely
+        .selectFrom("job_executions")
+        .selectAll()
+        .where("project_id", "=", projectId)
+        .execute();
 
       expect(jobs.length).toBe(0);
     }, 10_000);

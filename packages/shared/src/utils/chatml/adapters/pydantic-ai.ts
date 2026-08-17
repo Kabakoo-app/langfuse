@@ -1,6 +1,6 @@
 import type { NormalizerContext, ProviderAdapter } from "../types";
 import { removeNullFields, parseMetadata, getNestedProperty } from "../helpers";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * Pydantic AI adapter

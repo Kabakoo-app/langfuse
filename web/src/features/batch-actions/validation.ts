@@ -1,9 +1,8 @@
-import z from "zod";
+import z from "zod/v4";
 import {
   AddToDatasetMappingSchema,
   ObservationAddToDatasetConfigSchema,
   BatchActionQuerySchema,
-  BatchEvalSourceTableSchema,
 } from "@langfuse/shared";
 
 export const CreateObservationAddToDatasetActionSchema = z.object({
@@ -16,7 +15,6 @@ export const CreateObservationBatchEvaluationActionSchema = z.object({
   projectId: z.string(),
   query: BatchActionQuerySchema,
   evaluatorIds: z.array(z.string()).min(1),
-  sourceTable: BatchEvalSourceTableSchema.default("events"),
 });
 
 export const ValidateBatchAddToDatasetMappingSchema = z.object({

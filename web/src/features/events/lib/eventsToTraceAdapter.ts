@@ -1,5 +1,4 @@
-import { type TraceDomain } from "@langfuse/shared";
-import { type FullEventsObservations } from "@langfuse/shared/src/server";
+import { type EventsObservation, type TraceDomain } from "@langfuse/shared";
 import { type ObservationReturnTypeWithMetadata } from "@/src/server/api/routers/traces";
 import { type WithStringifiedMetadata } from "@/src/utils/clientSideDomainTypes";
 
@@ -25,9 +24,9 @@ export interface AdaptedTraceData {
  * The root observation (no parentObservationId) provides trace-level properties like name.
  */
 export function adaptEventsToTraceFormat(params: {
-  events: FullEventsObservations;
+  events: EventsObservation[];
   traceId: string;
-  rootIO?: { input: unknown; output: unknown; metadata?: unknown } | null;
+  rootIO?: { input: unknown; output: unknown } | null;
 }): AdaptedTraceData {
   const { events, traceId, rootIO } = params;
 
@@ -43,22 +42,6 @@ export function adaptEventsToTraceFormat(params: {
 
   // TODO: think, how to determine root span?
   const root = events.find((e) => !e.parentObservationId);
-
-  const latestTaggedEvent = events.reduce<
-    FullEventsObservations[number] | null
-  >((latest, event) => {
-    if (event.traceTags.length === 0) return latest;
-    if (!latest) return event;
-
-    if (event.updatedAt.getTime() > latest.updatedAt.getTime()) return event;
-    if (event.updatedAt.getTime() < latest.updatedAt.getTime()) return latest;
-
-    return event.createdAt.getTime() > latest.createdAt.getTime()
-      ? event
-      : latest;
-  }, null);
-
-  const traceTags = latestTaggedEvent?.traceTags;
 
   const endTimes = events
     .map((e) => e.endTime)
@@ -77,8 +60,8 @@ export function adaptEventsToTraceFormat(params: {
     timestamp: earliest.startTime,
     input: rootIO?.input ? JSON.stringify(rootIO.input) : null,
     output: rootIO?.output ? JSON.stringify(rootIO.output) : null,
-    metadata: JSON.stringify(rootIO?.metadata ?? root?.metadata ?? {}),
-    tags: traceTags ?? [],
+    metadata: JSON.stringify(root?.metadata ?? {}),
+    tags: [], // Events have tags on each observation, not trace-level
     bookmarked: root?.bookmarked ?? false,
     public: root?.public ?? false,
     release: earliest.version ?? null,

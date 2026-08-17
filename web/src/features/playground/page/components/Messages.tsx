@@ -10,7 +10,6 @@ import { Switch } from "@/src/components/ui/switch";
 import { Settings } from "lucide-react";
 import useLocalStorage from "@/src/components/useLocalStorage";
 import { env } from "@/src/env.mjs";
-import { STREAMING_PREF_KEY } from "@/src/features/playground/page/storage/keys";
 
 import { GenerationOutput } from "./GenerationOutput";
 import { ChatMessages } from "@/src/components/ChatMessages";
@@ -47,7 +46,7 @@ const SubmitButton = () => {
   const defaultStreamingEnabled =
     env.NEXT_PUBLIC_LANGFUSE_PLAYGROUND_STREAMING_ENABLED_DEFAULT === "true";
   const [streamingEnabled, setStreamingEnabled] = useLocalStorage(
-    STREAMING_PREF_KEY,
+    "langfuse-playground-streaming",
     defaultStreamingEnabled,
   );
 

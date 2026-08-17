@@ -169,7 +169,7 @@ const DatasetRunTableMultiSelectAction = ({
                 setIsDeleteDialogOpen(false);
               }}
             >
-              Delete Experiments
+              Delete Dataset Runs
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -23,7 +23,7 @@ import {
   PromptContentSchema,
 } from "@langfuse/shared/src/server";
 import { prisma } from "@langfuse/shared/src/db";
-import z from "zod";
+import z from "zod/v4";
 import { UnrecoverableError } from "../../errors/UnrecoverableError";
 
 export const parseDatasetItemInput = (

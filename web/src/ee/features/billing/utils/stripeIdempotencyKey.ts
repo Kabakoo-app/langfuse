@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * Utilities for generating idempotency keys for Stripe API operations.

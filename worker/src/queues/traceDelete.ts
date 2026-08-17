@@ -3,7 +3,7 @@ import {
   getCurrentSpan,
   logger,
   QueueName,
-  shouldSkipDeletionFor,
+  shouldSkipTraceDeletionFor,
   TQueueJobTypes,
 } from "@langfuse/shared/src/server";
 import { prisma } from "@langfuse/shared/src/db";
@@ -91,7 +91,7 @@ export const traceDeleteProcessor: Processor = async (
   }
 
   try {
-    if (await shouldSkipDeletionFor(projectId, traceIdsToDelete, "trace")) {
+    if (await shouldSkipTraceDeletionFor(projectId, traceIdsToDelete)) {
       return;
     }
 

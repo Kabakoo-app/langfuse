@@ -93,11 +93,7 @@ export function LlmApiKeyList(props: { projectId: string }) {
           <TableBody className="text-muted-foreground">
             {apiKeys.data?.data.length === 0 ? (
               <TableRow>
-                <TableCell
-                  density="comfortable"
-                  colSpan={6}
-                  className="text-center"
-                >
+                <TableCell colSpan={6} className="text-center">
                   None
                 </TableCell>
               </TableRow>
@@ -108,34 +104,29 @@ export function LlmApiKeyList(props: { projectId: string }) {
                   className="hover:bg-primary-foreground cursor-default"
                   onClick={() => setEditingKeyId(apiKey.id)}
                 >
-                  <TableCell density="comfortable" className="font-mono">
-                    {apiKey.provider}
-                  </TableCell>
-                  <TableCell density="comfortable" className="font-mono">
-                    {apiKey.adapter}
-                  </TableCell>
-                  <TableCell
-                    density="comfortable"
-                    className="max-w-md overflow-auto font-mono"
-                  >
+                  <TableCell className="font-mono">{apiKey.provider}</TableCell>
+                  <TableCell className="font-mono">{apiKey.adapter}</TableCell>
+                  <TableCell className="max-w-md overflow-auto font-mono">
                     {apiKey.baseURL ?? "default"}
                   </TableCell>
-                  <TableCell density="comfortable" className="font-mono">
+                  <TableCell className="font-mono">
                     {apiKey.displaySecretKey}
                   </TableCell>
                   {hasExtraHeaderKeys ? (
-                    <TableCell density="comfortable">
-                      {" "}
-                      {apiKey.extraHeaderKeys.join(", ")}{" "}
-                    </TableCell>
+                    <TableCell> {apiKey.extraHeaderKeys.join(", ")} </TableCell>
                   ) : null}
-                  <TableCell density="comfortable" className="text-right">
+                  <TableCell className="text-right">
                     <div
                       className="flex justify-end space-x-2"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <UpdateLLMApiKeyDialog
-                        apiKey={apiKey}
+                        apiKey={{
+                          ...apiKey,
+                          secretKey: apiKey.displaySecretKey,
+                          extraHeaders: apiKey.extraHeaderKeys.join(","),
+                          config: apiKey.config ?? null,
+                        }}
                         projectId={props.projectId}
                         open={editingKeyId === apiKey.id}
                         onOpenChange={(open: boolean) => {

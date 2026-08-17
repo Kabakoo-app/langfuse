@@ -26,13 +26,6 @@ service:
       path: /llm-connections
       request: UpsertLlmConnectionRequest
       response: LlmConnection
-    delete:
-      method: DELETE
-      docs: Delete an LLM connection by id. Evaluators that depend on the deleted connection are automatically paused.
-      path: /llm-connections/{id}
-      path-parameters:
-        id: string
-      response: DeleteLlmConnectionResponse
 
 types:
   LlmConnection:
@@ -102,10 +95,6 @@ types:
           - **Bedrock**: Required. Must be `{"region": "<aws-region>"}` (e.g., `{"region":"us-east-1"}`)
           - **VertexAI**: Optional. If provided, must be `{"location": "<gcp-location>"}` (e.g., `{"location":"us-central1"}`)
           - **Other adapters**: Not supported. Omit this field or set to null.
-
-  DeleteLlmConnectionResponse:
-    properties:
-      message: string
 
   LlmAdapter:
     enum:

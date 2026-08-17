@@ -1,5 +1,5 @@
 import { api } from "@/src/utils/api";
-import * as z from "zod";
+import * as z from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useEffect, useState, useMemo } from "react";
@@ -16,10 +16,7 @@ import {
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { useDatasetItemValidation } from "../hooks/useDatasetItemValidation";
 import type { DatasetItemDomain } from "@langfuse/shared";
-import {
-  DatasetItemFields,
-  type DatasetItemFormValues,
-} from "./DatasetItemFields";
+import { DatasetItemFields } from "./DatasetItemFields";
 import {
   stringifyDatasetItemData,
   type DatasetSchema,
@@ -95,7 +92,7 @@ export const EditDatasetItemDialog = ({
   });
   const utils = api.useUtils();
 
-  const form = useForm<DatasetItemFormValues, unknown, DatasetItemFormValues>({
+  const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       input: "",

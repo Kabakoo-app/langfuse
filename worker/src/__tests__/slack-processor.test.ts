@@ -160,11 +160,6 @@ describe("Slack Processor", () => {
           prompt: fullPrompt as PromptDomain,
           action: "created",
           type: "prompt-version",
-          user: {
-            id: "user-123",
-            name: "Test User",
-            email: "test@example.com",
-          },
         },
       };
 
@@ -219,11 +214,6 @@ describe("Slack Processor", () => {
           prompt: { id: promptId } as PromptDomain,
           action: "created",
           type: "prompt-version",
-          user: {
-            id: "user-123",
-            name: "Test User",
-            email: "test@example.com",
-          },
         },
       };
 
@@ -275,11 +265,6 @@ describe("Slack Processor", () => {
           prompt: fullPrompt as any,
           action: "created",
           type: "prompt-version",
-          user: {
-            id: "user-123",
-            name: "Test User",
-            email: "test@example.com",
-          },
         },
       };
 
@@ -335,11 +320,6 @@ describe("Slack Processor", () => {
           prompt: fullPrompt as PromptDomain,
           action: "created",
           type: "prompt-version",
-          user: {
-            id: "user-123",
-            name: "Test User",
-            email: "test@example.com",
-          },
         },
       };
 
@@ -415,11 +395,6 @@ describe("Slack Processor", () => {
             prompt: fullPrompt as PromptDomain,
             action: "created",
             type: "prompt-version",
-            user: {
-              id: "user-123",
-              name: "Test User",
-              email: "test@example.com",
-            },
           },
         };
 
@@ -461,11 +436,6 @@ describe("Slack Processor", () => {
           prompt: fullPrompt as PromptDomain,
           action: "created",
           type: "prompt-version",
-          user: {
-            id: "user-123",
-            name: "Test User",
-            email: "test@example.com",
-          },
         },
       };
 

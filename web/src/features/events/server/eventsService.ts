@@ -1,7 +1,7 @@
-import { type z } from "zod";
+import { type z } from "zod/v4";
 import {
+  AGGREGATABLE_SCORE_TYPES,
   type FilterCondition,
-  LISTABLE_SCORE_TYPES,
   filterAndValidateDbScoreList,
 } from "@langfuse/shared";
 import {
@@ -128,13 +128,13 @@ export async function getEventList(params: GetObservationsListParams) {
 
   const validatedScores = filterAndValidateDbScoreList({
     scores,
-    dataTypes: LISTABLE_SCORE_TYPES,
+    dataTypes: AGGREGATABLE_SCORE_TYPES,
     includeHasMetadata: true,
     onParseError: traceException,
   });
   const validatedTraceScores = filterAndValidateDbScoreList({
     scores: traceScores,
-    dataTypes: LISTABLE_SCORE_TYPES,
+    dataTypes: AGGREGATABLE_SCORE_TYPES,
     includeHasMetadata: true,
     onParseError: traceException,
   });

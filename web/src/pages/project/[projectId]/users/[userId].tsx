@@ -180,7 +180,7 @@ function ScoresTab({ userId, projectId }: TabProps) {
     <ScoresTable
       projectId={projectId}
       userId={userId}
-      hiddenColumns={["userId"]}
+      omittedFilter={["User ID"]}
     />
   );
 }
@@ -189,20 +189,14 @@ function TracesTab({ userId, projectId }: TabProps) {
   const { isBetaEnabled } = useV4Beta();
 
   if (isBetaEnabled) {
-    return (
-      <ObservationsEventsTable
-        projectId={projectId}
-        userId={userId}
-        omittedFilter={["userId"]}
-      />
-    );
+    return <ObservationsEventsTable projectId={projectId} userId={userId} />;
   }
 
   return (
     <TracesTable
       projectId={projectId}
       userId={userId}
-      omittedFilter={["userId"]}
+      omittedFilter={["User ID"]}
     />
   );
 }
@@ -214,7 +208,7 @@ function SessionsTab({ userId, projectId }: TabProps) {
     <SessionsTable
       projectId={projectId}
       userId={userId}
-      omittedFilter={["userIds"]}
+      omittedFilter={["User IDs"]}
       isBetaEnabled={isBetaEnabled}
     />
   );

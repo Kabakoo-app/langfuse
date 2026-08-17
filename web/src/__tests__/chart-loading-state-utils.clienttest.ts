@@ -1,8 +1,5 @@
 import { RESOURCE_LIMIT_ERROR_MESSAGE } from "@langfuse/shared";
-import {
-  getChartLoadingProgress,
-  getChartLoadingStateProps,
-} from "@/src/features/widgets/chart-library/chartLoadingStateUtils";
+import { getChartLoadingStateProps } from "@/src/features/widgets/chart-library/chartLoadingStateUtils";
 
 describe("getChartLoadingStateProps", () => {
   test("returns spinner-only loading props while query is pending", () => {
@@ -45,25 +42,5 @@ describe("getChartLoadingStateProps", () => {
       showHintImmediately: false,
       hintText: undefined,
     });
-  });
-
-  test("hides progress UI when backend streaming is not available", () => {
-    expect(
-      getChartLoadingProgress({
-        isPending: true,
-        progress: null,
-        useBackendProgress: false,
-      }),
-    ).toBeUndefined();
-  });
-
-  test("keeps the loading bar visible while waiting for streamed progress", () => {
-    expect(
-      getChartLoadingProgress({
-        isPending: true,
-        progress: null,
-        useBackendProgress: true,
-      }),
-    ).toBeNull();
   });
 });

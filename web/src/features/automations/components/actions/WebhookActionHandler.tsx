@@ -9,7 +9,7 @@ import {
   type ActionCreate,
   type ActionDomain,
 } from "@langfuse/shared";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // Define the form schema for webhook actions
 // Exported to silence @typescript-eslint/no-unused-vars v8 warning
@@ -43,7 +43,9 @@ type HeaderPair = {
   wasSecret: boolean;
 };
 
-export class WebhookActionHandler implements BaseActionHandler<WebhookActionFormData> {
+export class WebhookActionHandler
+  implements BaseActionHandler<WebhookActionFormData>
+{
   actionType = "WEBHOOK" as const;
 
   // Parse existing headers if available

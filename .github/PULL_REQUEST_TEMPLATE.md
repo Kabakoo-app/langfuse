@@ -15,10 +15,10 @@ Fixes # (issue)
 <!-- Please delete bullets that are not relevant. -->
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] Chore (tooling, dependencies, CI, workflows, repo upkeep, or other maintenance work)
+- [ ] Chore (refactoring code, technical debt, workflow improvements)
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Refactor (restructures existing code without changing behavior, e.g. simplify logic, split modules, reduce duplication)
+- [ ] Refactor (does not change functionality, e.g. code style improvements, linting)
 - [ ] This change requires a documentation update
 
 ## Mandatory Tasks

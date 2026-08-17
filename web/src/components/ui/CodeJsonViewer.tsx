@@ -24,7 +24,6 @@ import {
   usePromptReferenceProjectId,
 } from "@/src/components/ui/PromptReferences";
 import { copyTextToClipboard } from "@/src/utils/clipboard";
-import { useCopyToClipboard } from "@/src/hooks/useCopyToClipboard";
 
 export const IO_TABLE_CHAR_LIMIT = 10000;
 
@@ -218,52 +217,26 @@ export function CodeView(props: {
   defaultCollapsed?: boolean;
   title?: string;
   scrollable?: boolean;
-  copiedToClipboardMessage?: string;
 }) {
-  const { copiedToClipboardMessage } = props;
-
+  const [isCopied, setIsCopied] = useState(false);
   const [isCollapsed, setCollapsed] = useState(props.defaultCollapsed);
 
-  const { copy, isCopied } = useCopyToClipboard({
-    successDuration: copiedToClipboardMessage ? 3_000 : 1_000,
-  });
-
-  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCopy = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    const button = event.currentTarget;
+    setIsCopied(true);
     const content =
       props.originalContent ??
       (typeof props.content === "string"
         ? props.content
         : (props.content?.join("\n") ?? ""));
+    void copyTextToClipboard(content);
+    setTimeout(() => setIsCopied(false), 1000);
 
-    try {
-      await copy(content);
-    } catch {
-      // Clipboard writes can be rejected when the browser denies permission.
-    }
-
-    if (button) {
-      // Keep focus on the copy button to prevent focus shifting
-      // Note: the original button might no longer be in the DOM if React re-rendered the component after the state update.
-      button.focus();
-    }
+    // Keep focus on the copy button to prevent focus shifting
+    event.currentTarget.focus();
   };
 
   const handleShowAll = () => setCollapsed(!isCollapsed);
-
-  const CopySuccessIcon = useMemo(() => {
-    return (
-      <div className="animate-appear relative h-3">
-        <Check className="h-3 w-3" />
-        {copiedToClipboardMessage && (
-          <div className="text-secondary-foreground absolute top-0 right-0 mr-6 h-full max-w-[60vw] transform truncate overflow-hidden text-right text-sm leading-none whitespace-nowrap">
-            {copiedToClipboardMessage}
-          </div>
-        )}
-      </div>
-    );
-  }, [copiedToClipboardMessage]);
 
   return (
     <div
@@ -283,7 +256,11 @@ export function CodeView(props: {
               onClick={handleCopy}
               className=""
             >
-              {isCopied ? CopySuccessIcon : <Copy className="h-3 w-3" />}
+              {isCopied ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
             </Button>
           </div>
         ) : undefined}
@@ -301,7 +278,11 @@ export function CodeView(props: {
             onClick={handleCopy}
             className="absolute top-2 right-2 z-10"
           >
-            {isCopied ? CopySuccessIcon : <Copy className="h-3 w-3" />}
+            {isCopied ? (
+              <Check className="h-3 w-3" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
           </Button>
         )}
         <code
@@ -340,13 +321,10 @@ export const JsonSkeleton = ({
   borderless?: boolean;
   className?: string;
 }) => {
-  const isSingleLine = numRows === 1;
-
   return (
     <div
       className={cn(
-        isSingleLine ? "w-full" : "w-[400px]",
-        "rounded-md",
+        "w-[400px] rounded-md",
         borderless ? "" : "border",
         className,
       )}
@@ -356,7 +334,7 @@ export const JsonSkeleton = ({
           <Skeleton
             className={cn(
               "h-4 w-full",
-              !isSingleLine && i === numRows - 1 ? "w-3/4" : undefined,
+              i === numRows - 1 ? "w-3/4" : undefined,
             )}
             key={i}
           />

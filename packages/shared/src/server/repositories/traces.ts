@@ -432,9 +432,6 @@ export const getTraceCountsByProjectInCreationInterval = async ({
         {
           query,
           params: input.params,
-          clickhouseConfigs: {
-            request_timeout: 120000, // 2 minutes timeout
-          },
           tags: input.tags,
         },
       );
@@ -506,7 +503,6 @@ export const getTraceById = async ({
   clickhouseFeatureTag = "tracing",
   preferredClickhouseService,
   excludeInputOutput = false,
-  excludeMetadata = false,
 }: {
   traceId: string;
   projectId: string;
@@ -517,8 +513,6 @@ export const getTraceById = async ({
   preferredClickhouseService?: PreferredClickhouseService;
   /** When true, sets input/output columns to empty in the query to reduce database load */
   excludeInputOutput?: boolean;
-  /** When true, sets metadata column to empty in the query to reduce database load */
-  excludeMetadata?: boolean;
 }) => {
   const records = await measureAndReturn({
     operationName: "getTraceById",
@@ -553,14 +547,13 @@ export const getTraceById = async ({
         : renderingProps.truncated
           ? `leftUTF8(output, ${env.LANGFUSE_SERVER_SIDE_IO_CHAR_LIMIT})`
           : "output";
-      const metadataColumn = excludeMetadata ? "'{}'" : "metadata";
 
       const query = `
         SELECT
           id,
           name as name,
           user_id as user_id,
-          ${metadataColumn} as metadata,
+          metadata as metadata,
           release as release,
           version as version,
           project_id,
@@ -662,7 +655,6 @@ export const getTracesGroupedByName = async (
         query,
         params: input.params,
         tags: input.tags,
-        preferredClickhouseService: "ReadOnly",
       });
     },
   });
@@ -736,7 +728,6 @@ export const getTracesGroupedBySessionId = async (
         query,
         params: input.params,
         tags: input.tags,
-        preferredClickhouseService: "ReadOnly",
       });
     },
   });
@@ -810,7 +801,6 @@ export const getTracesGroupedByUsers = async (
         query,
         params: input.params,
         tags: input.tags,
-        preferredClickhouseService: "ReadOnly",
       });
     },
   });
@@ -865,7 +855,6 @@ export const getTracesGroupedByTags = async (props: GroupedTracesQueryProp) => {
         query,
         params: input.params,
         tags: input.tags,
-        preferredClickhouseService: "ReadOnly",
       });
     },
   });
@@ -1380,9 +1369,7 @@ export const getTracesForBlobStorageExport = function (
       bookmarked as bookmarked,
       tags,
       input as input,
-      output as output,
-      created_at,
-      updated_at
+      output as output
     FROM ${traceTable} FINAL
     WHERE project_id = {projectId: String}
     AND timestamp >= {minTimestamp: DateTime64(3)}

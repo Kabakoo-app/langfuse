@@ -93,7 +93,6 @@ export function TraceDetailView({
     setJsonViewPreference,
     jsonBetaEnabled,
     setJsonBetaEnabled,
-    isPeekMode,
   } = useViewPreferences();
 
   // Map jsonViewPreference to currentView format expected by child components
@@ -418,16 +417,11 @@ export function TraceDetailView({
             <div className="flex h-full min-h-0 w-full flex-col overflow-hidden pr-3">
               <ScoresTable
                 projectId={projectId}
+                omittedFilter={["Trace ID"]}
                 traceId={trace.id}
-                hiddenColumns={[
-                  "traceId",
-                  "traceName",
-                  "traceTags",
-                  "jobConfigurationId",
-                  "userId",
-                ]}
+                hiddenColumns={["traceName", "jobConfigurationId", "userId"]}
                 localStorageSuffix="TracePreview"
-                disableUrlPersistence={isPeekMode}
+                disableUrlPersistence
               />
             </div>
           </TabsBarContent>

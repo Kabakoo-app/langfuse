@@ -49,7 +49,6 @@ export default withMiddlewares({
     name: "Delete Score",
     querySchema: DeleteScoreQueryV1,
     responseSchema: DeleteScoreResponseV1,
-    rateLimitResource: "score-delete",
     successStatusCode: 202,
     fn: async ({ query, auth }) => {
       const { scoreId } = query;

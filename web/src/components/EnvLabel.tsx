@@ -1,4 +1,3 @@
-import { isRegionProduction } from "@/src/features/organizations/cloudRegions";
 import { useLangfuseCloudRegion } from "@/src/features/organizations/hooks";
 import { cn } from "@/src/utils/tailwind";
 import { useSession } from "next-auth/react";
@@ -8,9 +7,6 @@ export const EnvLabel = ({ className }: { className?: string }) => {
   const [isHidden, setIsHidden] = useState(false);
   const session = useSession();
   const { isLangfuseCloud, region } = useLangfuseCloudRegion();
-  const label =
-    region && isRegionProduction(region) ? `PROD-${region}` : region;
-
   if (!isLangfuseCloud) return null;
   if (!session.data?.user?.email?.endsWith("@langfuse.com")) return null;
   if (isHidden) return null;
@@ -27,7 +23,9 @@ export const EnvLabel = ({ className }: { className?: string }) => {
       )}
       onClick={() => setIsHidden(true)}
     >
-      {label}
+      {region && ["EU", "US", "HIPAA", "JP"].includes(region)
+        ? `PROD-${region}`
+        : region}
     </div>
   );
 };

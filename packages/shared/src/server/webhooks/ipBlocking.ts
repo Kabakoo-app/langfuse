@@ -50,14 +50,12 @@ export function isIPBlocked(
   whiteListedIpSegments: string[],
 ): boolean {
   try {
-    const cleanedIp = normalizeIPAddress(ipString);
-
     // Check if IP is in whitelist first
-    if (whitelistedIPs.includes(cleanedIp)) {
+    if (whitelistedIPs.includes(ipString.toLowerCase().trim())) {
       return false;
     }
 
-    const ip = ipaddr.parse(cleanedIp);
+    const ip = ipaddr.parse(ipString);
 
     const whitelistedSegments = whiteListedIpSegments.map((cidr) => {
       const [addr, bits] = cidr.split("/");
@@ -89,7 +87,8 @@ export function isIPBlocked(
  * Check if a string is an IP address
  */
 export function isIPAddress(hostname: string): boolean {
-  const cleaned = normalizeIPAddress(hostname);
+  // Remove brackets from IPv6 addresses
+  const cleaned = hostname.replace(/^\[|\]$/g, "");
 
   try {
     ipaddr.parse(cleaned);
@@ -137,11 +136,4 @@ export function isHostnameBlocked(hostname: string): boolean {
   }
 
   return false;
-}
-
-function normalizeIPAddress(ipString: string): string {
-  return ipString
-    .toLowerCase()
-    .trim()
-    .replace(/^\[|\]$/g, "");
 }

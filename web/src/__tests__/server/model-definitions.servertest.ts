@@ -13,7 +13,7 @@ import {
 } from "@/src/features/public-api/types/models";
 import { createOrgProjectAndApiKey } from "@langfuse/shared/src/server";
 import { v4 } from "uuid";
-import type { z } from "zod";
+import type { z } from "zod/v4";
 
 describe("/models API Endpoints", () => {
   type PublicModel = z.infer<typeof GetModelsV1Response>["data"][number];

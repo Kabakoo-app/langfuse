@@ -8,7 +8,6 @@ import { api } from "@/src/utils/api";
 import { Skeleton } from "@/src/components/ui/skeleton";
 import { captureException } from "@sentry/nextjs";
 import { useSession } from "next-auth/react";
-import { buildResizableImageSrc } from "./resizable-image.utils";
 
 /**
  * Implemented customLoader as we cannot whitelist user provided image domains
@@ -23,7 +22,11 @@ const customLoader = ({
   src: string;
   width: number;
   quality?: number;
-}) => buildResizableImageSrc({ src, width, quality });
+}) => {
+  if (!width || !quality) return src;
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}w=${width}&q=${quality || 75}`;
+};
 
 const ImageErrorDisplay = ({
   src,

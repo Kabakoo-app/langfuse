@@ -16,12 +16,11 @@ export const tracesOnlyCols: ColumnDefinition[] = [
   { name: "ID", id: "id", type: "string", internal: "t.id" },
   {
     name: "Name",
-    id: "traceName",
+    id: "name",
     type: "stringOptions",
     internal: 't."name"',
     options: [], // to be filled in at runtime
     nullable: true,
-    aliases: ["name"],
   },
   {
     name: "Environment",
@@ -84,11 +83,10 @@ export const tracesOnlyCols: ColumnDefinition[] = [
   },
   {
     name: "Tags",
-    id: "traceTags",
+    id: "tags",
     type: "arrayOptions",
     internal: 't."tags"',
     options: [], // to be filled in at runtime
-    aliases: ["tags"],
   },
 ];
 export const tracesTableCols: ColumnDefinition[] = [
@@ -217,8 +215,8 @@ export const evalDatasetFormFilterCols: ColumnDefinition[] = datasetOnlyCols;
 export type TraceOptions = {
   scores_avg?: Array<string>;
   score_categories?: Array<MultiValueOption>;
-  traceName?: Array<SingleValueOption>;
-  traceTags?: Array<SingleValueOption>;
+  name?: Array<SingleValueOption>;
+  tags?: Array<SingleValueOption>;
   environment?: Array<SingleValueOption>;
 };
 export type DatasetOptions = {
@@ -246,11 +244,11 @@ export function tracesTableColsWithOptions(
     if (col.id === "scores_avg") {
       return formatColumnOptions(col, options?.scores_avg ?? []);
     }
-    if (col.id === "traceName") {
-      return formatColumnOptions(col, options?.traceName ?? []);
+    if (col.id === "name") {
+      return formatColumnOptions(col, options?.name ?? []);
     }
-    if (col.id === "traceTags") {
-      return formatColumnOptions(col, options?.traceTags ?? []);
+    if (col.id === "tags") {
+      return formatColumnOptions(col, options?.tags ?? []);
     }
     if (col.id === "environment") {
       return formatColumnOptions(col, options?.environment ?? []);

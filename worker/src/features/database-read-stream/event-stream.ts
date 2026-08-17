@@ -9,6 +9,7 @@
 
 import {
   FilterCondition,
+  ScoreDataTypeEnum,
   type ScoreDataTypeType,
   TimeFilter,
   TracingSearchType,
@@ -122,7 +123,6 @@ export const getEventsStream = async (props: {
   const search = clickhouseSearchCondition(searchQuery, searchType, "e", [
     "span_id",
     "name",
-    "trace_name",
     "user_id",
     "session_id",
     "trace_id",
@@ -197,7 +197,7 @@ export const getEventsStream = async (props: {
         }[]
       | undefined;
     score_categories: string[] | undefined;
-    score_categories_tuples: [string, string | null, string][] | undefined;
+    score_categories_tuples: [string, string | null][] | undefined;
   };
 
   const asyncGenerator = queryClickhouseStream<EventRow>({
@@ -227,10 +227,10 @@ export const getEventsStream = async (props: {
 
     // Process categorical scores (tuples from ClickHouse)
     const categoricalScores = (bufferedRow.score_categories_tuples ?? []).map(
-      (cat: [string, string | null, string]) => ({
+      (cat) => ({
         name: cat[0],
         value: null,
-        dataType: cat[2],
+        dataType: ScoreDataTypeEnum.CATEGORICAL,
         stringValue: cat[1],
       }),
     );
@@ -400,7 +400,6 @@ export const getEventsStreamForEval = async (props: {
   const search = clickhouseSearchCondition(searchQuery, searchType, "e", [
     "span_id",
     "name",
-    "trace_name",
     "user_id",
     "session_id",
     "trace_id",
@@ -451,9 +450,6 @@ export const getEventsStreamForEval = async (props: {
     input: unknown;
     output: unknown;
     metadata: Record<string, unknown> | null;
-    experiment_id: string | null;
-    experiment_item_root_span_id: string | null;
-    experiment_item_expected_output: string | null;
   };
 
   const asyncGenerator = queryClickhouseStream<EvalEventRow>({
@@ -543,7 +539,6 @@ export const getEventsStreamForDataset = async (props: {
   const search = clickhouseSearchCondition(searchQuery, searchType, "e", [
     "span_id",
     "name",
-    "trace_name",
     "user_id",
     "session_id",
     "trace_id",

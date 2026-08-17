@@ -1,11 +1,8 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { prisma } from "@langfuse/shared/src/db";
 import managedEvaluators from "../constants/managed-evaluators.json";
 import { logger } from "@langfuse/shared/src/server";
-import {
-  extractVariables,
-  PersistedEvalOutputDefinitionSchema,
-} from "@langfuse/shared";
+import { extractVariables } from "@langfuse/shared";
 
 const ManagedEvaluatorSchema = z.object({
   id: z.string(),
@@ -14,7 +11,10 @@ const ManagedEvaluatorSchema = z.object({
   name: z.string(),
   partner: z.string().nullish(),
   version: z.number(),
-  outputDefinition: PersistedEvalOutputDefinitionSchema,
+  outputSchema: z.object({
+    score: z.string(),
+    reasoning: z.string(),
+  }),
   prompt: z.string(),
 });
 
@@ -67,9 +67,8 @@ export const upsertManagedEvaluators = async (force = false) => {
         name: evaluator.name,
         partner: evaluator.partner,
         version: evaluator.version,
-        outputDefinition: evaluator.outputDefinition,
+        outputSchema: evaluator.outputSchema,
         prompt: evaluator.prompt,
-        vars: parsePromptVariables(evaluator.prompt),
         updatedAt: evaluator.updated_at,
       };
 
@@ -84,6 +83,7 @@ export const upsertManagedEvaluators = async (force = false) => {
             id: evaluator.id,
             projectId: null,
             updatedAt: evaluator.updated_at,
+            vars: parsePromptVariables(evaluator.prompt),
           },
         })
         .then(() =>
@@ -99,7 +99,7 @@ export const upsertManagedEvaluators = async (force = false) => {
 
     await Promise.all(upsertPromises);
     logger.info(
-      `Finished upserting Langfuse evaluators in ${Date.now() - startTime}ms`,
+      `Finished upserting Langfuse dashboards and widgets in ${Date.now() - startTime}ms`,
     );
   } catch (error) {
     logger.error(

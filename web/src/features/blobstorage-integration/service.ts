@@ -24,7 +24,6 @@ type UpsertBlobStorageIntegrationInput = {
   exportMode: BlobStorageExportMode;
   exportStartDate: Date | null;
   exportSource?: AnalyticsIntegrationExportSource;
-  compressed?: boolean;
 };
 
 function resolveExportStartDate(params: {
@@ -82,7 +81,6 @@ export async function upsertBlobStorageIntegration(params: {
     exportMode: data.exportMode,
     exportStartDate: resolvedExportStartDate,
     exportSource: data.exportSource,
-    compressed: data.compressed ?? true,
   };
 
   return prisma.$transaction(async (tx) => {

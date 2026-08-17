@@ -1,9 +1,6 @@
-import { omitFilterFacets } from "@/src/features/filters/lib/filter-config";
 import { sessionsViewCols } from "@langfuse/shared";
 import type { FilterConfig } from "@/src/features/filters/lib/filter-config";
 import type { ColumnToBackendKeyMap } from "@/src/features/filters/lib/filter-transform";
-
-export type SessionOmittableFilterColumn = "userIds";
 
 /**
  * Maps frontend column IDs to backend-expected column IDs
@@ -132,9 +129,3 @@ export const sessionFilterConfig: FilterConfig = {
     },
   ],
 };
-
-export function getSessionFilterConfig(
-  omittedFilter: SessionOmittableFilterColumn[] = [],
-): FilterConfig {
-  return omitFilterFacets(sessionFilterConfig, omittedFilter);
-}

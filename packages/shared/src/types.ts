@@ -1,4 +1,4 @@
-import { type z } from "zod";
+import { type z } from "zod/v4";
 import { singleFilter, timeFilter } from "./interfaces/filters";
 
 // to be sent to the server
@@ -40,6 +40,4 @@ export type TableName =
   | "dataset_items"
   | "job_executions"
   | "dataset_runs"
-  | "dataset_run_items_by_run"
-  | "experiments"
-  | "experiment-items";
+  | "dataset_run_items_by_run";

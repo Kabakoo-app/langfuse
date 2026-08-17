@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 const base = z.object({
   domain: z.string().refine((v) => v === v.toLowerCase(), {
@@ -18,23 +18,6 @@ const tokenEndpointAuthMethod = z
   ])
   .optional();
 
-const idTokenSignedResponseAlg = z
-  .enum([
-    "RS256",
-    "RS384",
-    "RS512",
-    "ES256",
-    "ES384",
-    "ES512",
-    "PS256",
-    "PS384",
-    "PS512",
-    "HS256",
-    "HS384",
-    "HS512",
-  ])
-  .optional();
-
 export const GoogleProviderSchema = base.extend({
   authProvider: z.literal("google"),
   authConfig: z
@@ -43,7 +26,6 @@ export const GoogleProviderSchema = base.extend({
       clientSecret: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -84,7 +66,6 @@ export const GitlabProviderSchema = base.extend({
       issuer: z.string().optional(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -98,7 +79,6 @@ export const Auth0ProviderSchema = base.extend({
       issuer: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -114,7 +94,6 @@ export const OktaProviderSchema = base.extend({
       }),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -131,7 +110,6 @@ export const AuthentikProviderSchema = base.extend({
       }),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -145,7 +123,6 @@ export const OneLoginProviderSchema = base.extend({
       issuer: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -159,7 +136,6 @@ export const AzureAdProviderSchema = base.extend({
       tenantId: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -173,7 +149,6 @@ export const CognitoProviderSchema = base.extend({
       issuer: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -188,7 +163,6 @@ export const KeycloakProviderSchema = base.extend({
       issuer: z.string(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -205,7 +179,6 @@ export const CustomProviderSchema = base.extend({
       idToken: z.boolean().optional().default(true),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });
@@ -220,7 +193,6 @@ export const JumpCloudProviderSchema = base.extend({
       scope: z.string().nullish(),
       allowDangerousEmailAccountLinking: z.boolean().optional().default(false),
       tokenEndpointAuthMethod: tokenEndpointAuthMethod,
-      idTokenSignedResponseAlg: idTokenSignedResponseAlg,
     })
     .nullish(),
 });

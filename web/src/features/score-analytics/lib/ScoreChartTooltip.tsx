@@ -5,15 +5,20 @@ import {
 } from "@/src/utils/date-range-utils";
 import { formatChartTooltipTimestamp } from "./chart-formatters";
 import { useChart } from "@/src/components/ui/chart";
-import type { TooltipContentProps, TooltipValueType } from "recharts";
 
 /**
  * Props for the ScoreChartTooltip component.
  * Compatible with Recharts tooltip API.
  */
 export interface ScoreChartTooltipProps {
-  active?: TooltipContentProps<TooltipValueType, string | number>["active"];
-  payload?: TooltipContentProps<TooltipValueType, string | number>["payload"];
+  active?: boolean;
+  payload?: Array<{
+    name?: string;
+    value?: number | string;
+    color?: string;
+    dataKey?: string;
+    payload?: any;
+  }>;
   label?: string | number;
   interval?: IntervalConfig;
   timeRange?: TimeRange;
@@ -62,9 +67,7 @@ export function ScoreChartTooltip({
 
   // Filter out duplicates
   const uniquePayload = Array.from(
-    new Map(
-      payload.map((item) => [String(item.name ?? item.dataKey ?? ""), item]),
-    ).values(),
+    new Map(payload.map((item) => [item.name ?? item.dataKey, item])).values(),
   );
 
   // Sort payload by config key order for stable tooltip across columns
@@ -73,8 +76,8 @@ export function ScoreChartTooltip({
   // Falls back to value-based sorting if config keys not available
   const configKeys = Object.keys(config);
   const sortedPayload = uniquePayload.sort((a, b) => {
-    const keyA = String(a.name ?? a.dataKey ?? "");
-    const keyB = String(b.name ?? b.dataKey ?? "");
+    const keyA = a.name ?? a.dataKey ?? "";
+    const keyB = b.name ?? b.dataKey ?? "";
 
     // If both keys exist in config, sort by config order (reversed)
     const indexA = configKeys.indexOf(keyA);
@@ -124,7 +127,7 @@ export function ScoreChartTooltip({
       <div className={cn("space-y-1 px-3 py-1.5")}>
         {sortedPayload.map((entry, index) => {
           // Get series label from config using the Bar's dataKey
-          const seriesKey = String(entry.name ?? entry.dataKey ?? "");
+          const seriesKey = entry.name || entry.dataKey || "";
           const seriesLabel = config[seriesKey]?.label || seriesKey;
 
           return (

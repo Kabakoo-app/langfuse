@@ -10,10 +10,9 @@ import {
   removeObjectKeys,
   type DatasetRunItemDomain,
   type DatasetItemDomain,
-  stringDateTime,
 } from "@langfuse/shared";
 import { DatasetJSONSchema } from "@langfuse/shared/src/server";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * Objects
@@ -234,7 +233,6 @@ export const PostDatasetRunItemsV1Body = z
     observationId: z.string().nullish(),
     traceId: z.string().nullish(),
     datasetVersion: versionZod.nullish(),
-    createdAt: stringDateTime,
   })
   .strict()
   .refine((data) => data.observationId || data.traceId, {

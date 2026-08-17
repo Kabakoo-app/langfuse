@@ -43,7 +43,6 @@ describe("extractObservationVariables", () => {
     tool_definitions: { search: '{"description": "Search the web"}' },
     tool_calls: ['{"name": "search", "args": {"query": "test"}}'],
     tool_call_names: ["search"],
-    tool_call_count: 1,
 
     // Usage & Cost
     usage_details: { input: 100, output: 50 },
@@ -311,8 +310,8 @@ describe("extractObservationVariables", () => {
         variableMapping,
       });
 
-      // Single-match results are unwrapped
-      expect(result[0].value).toBe("Hello, how are you?");
+      // JSONPath returns an array, which gets JSON-stringified
+      expect(result[0].value).toBe(JSON.stringify(["Hello, how are you?"]));
     });
 
     it("should apply JSON selector to extract nested field from output", () => {
@@ -332,8 +331,7 @@ describe("extractObservationVariables", () => {
         availableObservationEvalVariableColumns as ObservationEvalVariableColumn[],
       );
 
-      // Single-match results are unwrapped
-      expect(result[0].value).toBe("I am fine, thank you!");
+      expect(result[0].value).toBe(JSON.stringify(["I am fine, thank you!"]));
     });
 
     // OTel ingestion stringifies metadata.attributes.* values; ingestion stringifies the whole metadata.attributes object
@@ -454,8 +452,8 @@ describe("extractObservationVariables", () => {
         availableObservationEvalVariableColumns as ObservationEvalVariableColumn[],
       );
 
-      // Non-matching JSONPath returns empty string
-      expect(result[0].value).toBe("");
+      // JSONPath returns empty array for non-matching paths
+      expect(result[0].value).toBe("[]");
     });
 
     it("should handle non-JSON string column with JSON selector", () => {

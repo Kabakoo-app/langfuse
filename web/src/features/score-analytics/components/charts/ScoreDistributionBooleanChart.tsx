@@ -1,8 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
-import { Bar, BarChart, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, XAxis, YAxis, Legend } from "recharts";
 import {
   ChartContainer,
-  ChartLegend,
   ChartTooltip,
   type ChartConfig,
 } from "@/src/components/ui/chart";
@@ -222,7 +221,6 @@ export function ScoreDistributionBooleanChart({
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          niceTicks="auto"
           tickFormatter={(value) => value.toLocaleString()}
         />
         <ChartTooltip
@@ -248,7 +246,7 @@ export function ScoreDistributionBooleanChart({
           />
         )}
 
-        <ChartLegend
+        <Legend
           content={
             <ScoreChartLegendContent
               interactive={isComparisonMode}

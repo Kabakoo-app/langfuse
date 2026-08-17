@@ -1,110 +1,105 @@
 import { Job, Processor, Worker, WorkerOptions } from "bullmq";
 import {
+  getQueue,
   convertQueueNameToMetricName,
   createNewRedisInstance,
   getQueuePrefix,
   logger,
   QueueName,
+  IngestionQueue,
+  SecondaryIngestionQueue,
+  TraceUpsertQueue,
+  OtelIngestionQueue,
+  EvalExecutionQueue,
+  SecondaryEvalExecutionQueue,
+  LLMAsJudgeExecutionQueue,
   recordGauge,
   recordHistogram,
   recordIncrement,
   redisQueueRetryOptions,
   traceException,
 } from "@langfuse/shared/src/server";
-import { env } from "../env";
-import {
-  resolveQueueInstance,
-  SHARDED_QUEUE_BASE_NAMES,
-} from "./shardedQueueRegistry";
 
 export class WorkerManager {
   private static workers: { [key: string]: Worker } = {};
-
-  private static resolveMetricInfo(queueName: QueueName): {
-    baseMetric: string;
-    shardTag: { shard: string } | undefined;
-  } {
-    for (const base of SHARDED_QUEUE_BASE_NAMES) {
-      if (queueName.startsWith(base)) {
-        return {
-          baseMetric: convertQueueNameToMetricName(base),
-          shardTag: { shard: queueName },
-        };
-      }
-    }
-    return {
-      baseMetric: convertQueueNameToMetricName(queueName),
-      shardTag: undefined,
-    };
-  }
 
   private static metricWrapper(
     processor: Processor,
     queueName: QueueName,
   ): Processor {
-    const oldMetric = convertQueueNameToMetricName(queueName);
-    const { baseMetric, shardTag } = WorkerManager.resolveMetricInfo(queueName);
-
     return async (job: Job) => {
       const startTime = Date.now();
       const waitTime = Date.now() - job.timestamp;
-
-      recordIncrement(oldMetric + ".request");
-      recordIncrement(baseMetric + ".rate", 1, {
-        type: "request",
-        ...shardTag,
-      });
-
-      recordHistogram(oldMetric + ".wait_time", waitTime, {
-        unit: "milliseconds",
-      });
-      recordHistogram(baseMetric + ".time", waitTime, {
-        type: "wait",
-        unit: "milliseconds",
-        ...shardTag,
-      });
-
+      recordIncrement(convertQueueNameToMetricName(queueName) + ".request");
+      recordHistogram(
+        convertQueueNameToMetricName(queueName) + ".wait_time",
+        waitTime,
+        {
+          unit: "milliseconds",
+        },
+      );
       const result = await processor(job);
-
-      const queue = resolveQueueInstance(queueName);
-      // Sample queue depth gauges for sharded queues to reduce metric volume.
-      const shouldSample =
-        !shardTag || Math.random() < env.LANGFUSE_QUEUE_METRICS_SAMPLE_RATE;
-
-      if (shouldSample) {
-        Promise.allSettled([
-          // Here we only consider waiting jobs instead of the default ("waiting" or "delayed"
-          // or "prioritized" or "waiting-children") that count provides
-          queue?.getWaitingCount().then((count) => {
-            recordGauge(oldMetric + ".length", count, {
+      const queue = queueName.startsWith(QueueName.IngestionQueue)
+        ? IngestionQueue.getInstance({ shardName: queueName })
+        : queueName.startsWith(QueueName.IngestionSecondaryQueue)
+          ? SecondaryIngestionQueue.getInstance({ shardName: queueName })
+          : queueName.startsWith(QueueName.TraceUpsert)
+            ? TraceUpsertQueue.getInstance({ shardName: queueName })
+            : queueName.startsWith(QueueName.OtelIngestionQueue)
+              ? OtelIngestionQueue.getInstance({ shardName: queueName })
+              : queueName.startsWith(QueueName.EvaluationExecution)
+                ? EvalExecutionQueue.getInstance({ shardName: queueName })
+                : queueName.startsWith(
+                      QueueName.EvaluationExecutionSecondaryQueue,
+                    )
+                  ? SecondaryEvalExecutionQueue.getInstance({
+                      shardName: queueName,
+                    })
+                  : queueName.startsWith(QueueName.LLMAsJudgeExecution)
+                    ? LLMAsJudgeExecutionQueue.getInstance({
+                        shardName: queueName,
+                      })
+                    : getQueue(
+                        queueName as Exclude<
+                          QueueName,
+                          | QueueName.IngestionQueue
+                          | QueueName.IngestionSecondaryQueue
+                          | QueueName.EvaluationExecution
+                          | QueueName.EvaluationExecutionSecondaryQueue
+                          | QueueName.LLMAsJudgeExecution
+                          | QueueName.TraceUpsert
+                          | QueueName.OtelIngestionQueue
+                        >,
+                      );
+      Promise.allSettled([
+        // Here we only consider waiting jobs instead of the default ("waiting" or "delayed"
+        // or "prioritized" or "waiting-children") that count provides
+        queue?.getWaitingCount().then((count) => {
+          recordGauge(
+            convertQueueNameToMetricName(queueName) + ".length",
+            count,
+            {
               unit: "records",
-            });
-          }),
-          queue?.getFailedCount().then((count) => {
-            recordGauge(oldMetric + ".dlq_length", count, {
+            },
+          );
+        }),
+        queue?.getFailedCount().then((count) => {
+          recordGauge(
+            convertQueueNameToMetricName(queueName) + ".dlq_length",
+            count,
+            {
               unit: "records",
-            });
-          }),
-          queue?.getActiveCount().then((count) => {
-            recordGauge(oldMetric + ".active", count, {
-              unit: "records",
-            });
-          }),
-        ]).catch((err) => {
-          logger.error("Failed to record queue length", err);
-        });
-      }
-
-      const processingTime = Date.now() - startTime;
-      recordHistogram(oldMetric + ".processing_time", processingTime, {
-        unit: "milliseconds",
+            },
+          );
+        }),
+      ]).catch((err) => {
+        logger.error("Failed to record queue length", err);
       });
-      recordHistogram(baseMetric + ".time", processingTime, {
-        type: "processing",
-        unit: "milliseconds",
-        ...shardTag,
-      });
-
+      recordHistogram(
+        convertQueueNameToMetricName(queueName) + ".processing_time",
+        Date.now() - startTime,
+        { unit: "milliseconds" },
+      );
       return result;
     };
   }
@@ -118,10 +113,6 @@ export class WorkerManager {
 
   public static getWorker(queueName: QueueName): Worker | undefined {
     return WorkerManager.workers[queueName];
-  }
-
-  public static getRegisteredQueueNames(): string[] {
-    return Object.keys(WorkerManager.workers);
   }
 
   public static register(
@@ -154,9 +145,6 @@ export class WorkerManager {
     WorkerManager.workers[queueName] = worker;
     logger.info(`${queueName} executor started: ${worker.isRunning()}`);
 
-    const oldMetric = convertQueueNameToMetricName(queueName);
-    const { baseMetric, shardTag } = WorkerManager.resolveMetricInfo(queueName);
-
     // Add error handling
     worker.on("failed", (job: Job | undefined, err: Error) => {
       logger.error(
@@ -164,11 +152,7 @@ export class WorkerManager {
         err,
       );
       traceException(err);
-      recordIncrement(oldMetric + ".failed");
-      recordIncrement(baseMetric + ".rate", 1, {
-        type: "failed",
-        ...shardTag,
-      });
+      recordIncrement(convertQueueNameToMetricName(queueName) + ".failed");
     });
     worker.on("error", (failedReason: Error) => {
       logger.error(
@@ -176,11 +160,7 @@ export class WorkerManager {
         failedReason,
       );
       traceException(failedReason);
-      recordIncrement(oldMetric + ".error");
-      recordIncrement(baseMetric + ".rate", 1, {
-        type: "error",
-        ...shardTag,
-      });
+      recordIncrement(convertQueueNameToMetricName(queueName) + ".error");
     });
   }
 }

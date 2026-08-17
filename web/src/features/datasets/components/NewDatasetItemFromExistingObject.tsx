@@ -24,7 +24,6 @@ import { useIsAuthenticatedAndProjectMember } from "@/src/features/auth/hooks";
 import { parseJsonPrioritised } from "@langfuse/shared";
 import { ActionButton } from "@/src/components/ActionButton";
 import { type MetadataDomainClient } from "@/src/utils/clientSideDomainTypes";
-import { type Prisma } from "@langfuse/shared";
 
 /**
  * Component for creating a new dataset item from an existing object.
@@ -40,30 +39,22 @@ export const NewDatasetItemFromExistingObject = (props: {
   traceId?: string;
   observationId?: string;
   fromDatasetId?: string;
-  input: Prisma.JsonValue | null;
-  output: Prisma.JsonValue | null;
+  input: string | null;
+  output: string | null;
   metadata: MetadataDomainClient;
   isCopyItem?: boolean;
   buttonVariant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
 }) => {
-  const normalizePrefillValue = (
-    value: Prisma.JsonValue | null,
-  ): Prisma.JsonValue | null => {
-    if (value === null || value === undefined) {
-      return null;
-    }
+  const parsedInput =
+    props.input && typeof props.input === "string"
+      ? (parseJsonPrioritised(props.input) ?? null)
+      : null;
 
-    if (typeof value === "string") {
-      const parsed = parseJsonPrioritised(value);
-      return parsed !== undefined ? parsed : value;
-    }
-
-    return value;
-  };
-
-  const parsedInput = normalizePrefillValue(props.input);
-  const parsedOutput = normalizePrefillValue(props.output);
+  const parsedOutput =
+    props.output && typeof props.output === "string"
+      ? (parseJsonPrioritised(props.output) ?? null)
+      : null;
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const isAuthenticatedAndProjectMember = useIsAuthenticatedAndProjectMember(

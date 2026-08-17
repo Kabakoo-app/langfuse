@@ -616,7 +616,7 @@ describe("/api/public/ingestion API Endpoint", () => {
     ".invalidcharacter!",
     "incrediblylongstringwithmorethan40characters",
   ])(
-    "should fallback to default for invalid environments (%s)",
+    "should fail for invalid environments (%s)",
     async (environment: string) => {
       const entity = {
         id: randomUUID(),
@@ -637,8 +637,7 @@ describe("/api/public/ingestion API Endpoint", () => {
       });
 
       expect(response.status).toBe(207);
-      expect(response.body.successes.length).toBe(1);
-      expect(response.body.errors.length).toBe(0);
+      expect(response.body.errors[0].status).toBe(400);
     },
   );
 

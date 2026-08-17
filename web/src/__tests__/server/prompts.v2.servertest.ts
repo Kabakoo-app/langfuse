@@ -11,7 +11,7 @@ import {
   PromptType,
 } from "@langfuse/shared";
 import { parsePromptDependencyTags } from "@langfuse/shared";
-import { nanoid } from "nanoid";
+import { generateId, nanoid } from "ai";
 
 import { type PromptsMetaResponse } from "@/src/features/prompts/server/actions/getPromptsMeta";
 import {
@@ -69,7 +69,7 @@ const setupTriggerAndAction = async (projectId: string) => {
       id: v4(),
       projectId: projectId,
       eventSource: "prompt",
-      eventActions: [],
+      eventActions: ["updated"],
       filter: [],
       status: "ACTIVE",
     },
@@ -544,7 +544,7 @@ describe("/api/public/v2/prompts API Endpoint", () => {
 
     it("should create and fetch a chat prompt with message placeholders", async () => {
       const { auth } = await createOrgProjectAndApiKey();
-      const promptName = `prompt-name-message-placeholders${nanoid()}`;
+      const promptName = `prompt-name-message-placeholders${generateId()}`;
       const commitMessage = "feat: add message placeholders support";
       const chatMessages = [
         {

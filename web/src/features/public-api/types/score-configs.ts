@@ -1,17 +1,15 @@
 import {
   BooleanConfigFields,
   CategoricalConfigFields,
-  TextConfigFields,
   jsonSchema,
   NumericConfigFields,
   paginationMetaResponseZod,
   publicApiPaginationZod,
   ScoreConfigCategory,
-  ScoreConfigNameSchema,
   validateCategories,
   validateNumericRangeFields,
 } from "@langfuse/shared";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * Objects
@@ -19,9 +17,11 @@ import { z } from "zod";
 const CategoriesWithCustomError = jsonSchema.superRefine((categories, ctx) => {
   const parseResult = z.array(ScoreConfigCategory).safeParse(categories);
   if (!parseResult.success) {
-    ctx.addIssue(
-      "Category must be an array of objects with label value pairs, where labels and values are unique.",
-    );
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Category must be an array of objects with label value pairs, where labels and values are unique.",
+    } as z.core.$ZodIssueCustom);
     return;
   }
 
@@ -55,10 +55,6 @@ const APIScoreConfig = z
       ...ScoreConfigBase.shape,
       ...BooleanConfigFields.shape,
     }),
-    z.object({
-      ...ScoreConfigBase.shape,
-      ...TextConfigFields.shape,
-    }),
   ])
   .superRefine(validateNumericRangeFields);
 
@@ -71,7 +67,7 @@ export const GetScoreConfigResponse = APIScoreConfig;
 
 // POST /score-configs
 const PostScoreConfigBase = z.object({
-  name: ScoreConfigNameSchema,
+  name: z.string(),
   description: z.string().nullish(),
 });
 
@@ -98,15 +94,6 @@ export const PostScoreConfigBody = z
         categories: z.undefined(),
       }).shape,
     }),
-    z.object({
-      ...PostScoreConfigBase.shape,
-      ...z.object({
-        dataType: z.literal("TEXT"),
-        categories: z.undefined(),
-        maxValue: z.undefined().nullish(),
-        minValue: z.undefined().nullish(),
-      }).shape,
-    }),
   ])
   .superRefine(validateNumericRangeFields);
 
@@ -120,7 +107,7 @@ export const PutScoreConfigQuery = z.object({
 export const PutScoreConfigBody = z
   .object({
     isArchived: z.boolean().optional(),
-    name: ScoreConfigNameSchema.optional(),
+    name: z.string().min(1).max(35).optional(),
     minValue: z.number().optional(),
     maxValue: z.number().optional(),
     categories: CategoriesWithCustomError.optional(),

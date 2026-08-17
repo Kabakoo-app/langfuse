@@ -22,7 +22,12 @@ import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePos
 
 type SupportType = "in-app-support" | "custom" | "community";
 
-export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
+export function IntroSection({
+  onStartForm,
+}: {
+  onStartForm: () => void;
+  displayDensity?: "default" | "compact";
+}) {
   const uiCustomization = useUiCustomization();
   const { isLangfuseCloud } = useLangfuseCloudRegion();
   const capture = usePostHogClientCapture();

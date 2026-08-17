@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { SpanKind } from "@opentelemetry/api";
 import { type Prompt } from "@langfuse/shared";
 import { instrumentAsync } from "@langfuse/shared/src/server";

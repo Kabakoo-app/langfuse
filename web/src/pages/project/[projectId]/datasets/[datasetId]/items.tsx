@@ -26,8 +26,6 @@ import { DatasetVersionHistoryPanel } from "@/src/features/datasets/components/D
 import { DatasetVersionWarningBanner } from "@/src/features/datasets/components/DatasetVersionWarningBanner";
 import { useState } from "react";
 import { useDatasetVersion } from "@/src/features/datasets/hooks/useDatasetVersion";
-import { useExperimentAccess } from "@/src/features/experiments/hooks/useExperimentAccess";
-import { ExperimentsBetaSwitch } from "@/src/features/experiments/components/ExperimentsBetaSwitch";
 
 function DatasetItemsView() {
   const router = useRouter();
@@ -38,12 +36,6 @@ function DatasetItemsView() {
   const isViewingOldVersion = selectedVersion !== null;
 
   const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
-
-  const {
-    canUseExperimentsBetaToggle,
-    isExperimentsBetaEnabled,
-    setExperimentsBetaEnabled,
-  } = useExperimentAccess();
 
   const dataset = api.datasets.byId.useQuery({
     datasetId,
@@ -74,18 +66,16 @@ function DatasetItemsView() {
     setIsVersionPanelOpen(open);
   };
 
-  const betaSwitch = canUseExperimentsBetaToggle ? (
-    <ExperimentsBetaSwitch
-      enabled={isExperimentsBetaEnabled}
-      onEnabledChange={setExperimentsBetaEnabled}
-    />
-  ) : null;
-
   return (
     <Page
       headerProps={{
         title: dataset.data?.name ?? "",
         itemType: "DATASET",
+        help: dataset.data?.description
+          ? {
+              description: dataset.data.description,
+            }
+          : undefined,
         breadcrumb: [
           { name: "Datasets", href: `/project/${projectId}/datasets` },
         ],
@@ -93,7 +83,6 @@ function DatasetItemsView() {
           tabs: getDatasetTabs(projectId, datasetId),
           activeTab: DATASET_TABS.ITEMS,
         },
-        actionButtonsLeft: betaSwitch,
         actionButtonsRight: (
           <>
             {!showOnboarding && (
@@ -160,11 +149,11 @@ function DatasetItemsView() {
             </DropdownMenu>
             <Button
               variant="outline"
-              size="icon"
               onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
               title="Version History"
             >
-              <History className="h-4 w-4" />
+              <History className="mr-2 h-4 w-4" />
+              Version History
             </Button>
           </>
         ),

@@ -2,10 +2,9 @@ import {
   NumericConfigFields,
   CategoricalConfigFields,
   BooleanConfigFields,
-  TextConfigFields,
   validateNumericRangeFields,
 } from "@langfuse/shared";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { type CreateConfig, type UpdateConfig } from "./upsertFormTypes";
 
 const ScoreConfigBaseSchema = z.object({
@@ -20,7 +19,6 @@ const ScoreConfigValidationSchema = ScoreConfigBaseSchema.and(
       NumericConfigFields,
       CategoricalConfigFields,
       BooleanConfigFields,
-      TextConfigFields,
     ])
     .superRefine(validateNumericRangeFields),
 );

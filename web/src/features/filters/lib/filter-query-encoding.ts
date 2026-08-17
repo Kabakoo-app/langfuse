@@ -4,7 +4,6 @@ import {
   type SingleValueOption,
 } from "@langfuse/shared";
 import { encodeDelimitedArray, decodeDelimitedArray } from "use-query-params";
-import { normalizeLegacySessionPositionInTraceKey } from "@/src/components/session/session-position-in-trace";
 
 // Escape pipe characters in values to avoid conflicts with the delimiter
 // Uses backslash escaping: | → \|, and \ → \\
@@ -134,10 +133,6 @@ export function decodeFiltersGeneric(query: string): FilterState {
 
     const decodedOperator = decodeURIComponent(operator);
     const decodedKey = key ? decodeURIComponent(key) : "";
-    const normalizedKey =
-      type === "positionInTrace"
-        ? normalizeLegacySessionPositionInTraceKey(decodedKey)
-        : decodedKey;
     const decodedValue = decodeURIComponent(encodedValue);
 
     // Parse value based on type
@@ -176,14 +171,14 @@ export function decodeFiltersGeneric(query: string): FilterState {
     };
 
     // Add key field for types that need it
-    if (normalizedKey) {
+    if (decodedKey) {
       if (
         type === "categoryOptions" ||
         type === "numberObject" ||
         type === "stringObject" ||
         type === "positionInTrace"
       ) {
-        filter.key = normalizedKey;
+        filter.key = decodedKey;
       }
     }
 

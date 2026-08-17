@@ -94,7 +94,10 @@ export const SupportDrawer = ({
                 />
               )}
               {currentMode === "success" && (
-                <SuccessSection onAnother={() => setCurrentMode("form")} />
+                <SuccessSection
+                  onClose={close}
+                  onAnother={() => setCurrentMode("form")}
+                />
               )}
             </div>
           </div>

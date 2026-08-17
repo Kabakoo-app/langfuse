@@ -3,7 +3,7 @@ import { parseConnectionUrl } from "nodemailer/lib/shared/index.js";
 import { render } from "@react-email/render";
 import { UsageThresholdWarningEmailTemplate } from "./UsageThresholdWarningEmailTemplate";
 import { logger } from "../../../logger";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export interface UsageThresholdWarningEmailProps {
   env: Partial<

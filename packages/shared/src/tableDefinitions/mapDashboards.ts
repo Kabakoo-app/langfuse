@@ -70,12 +70,6 @@ export const dashboardColumnDefinitions: UiColumnMappings = [
     uiTableName: "Type",
   },
   {
-    clickhouseTableName: "observations",
-    clickhouseSelect: "o.level",
-    uiTableId: "level",
-    uiTableName: "Level",
-  },
-  {
     clickhouseTableName: "traces",
     clickhouseSelect: "t.user_id",
     uiTableId: "userId",

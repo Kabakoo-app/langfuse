@@ -175,7 +175,9 @@ export const getObservationsForTrace = async <IncludeIO extends boolean>(
     prompt_id,
     prompt_name,
     prompt_version,
-    ${includeIO === true ? "tool_definitions, tool_calls, tool_call_names," : ""}
+    tool_definitions,
+    tool_calls,
+    tool_call_names,
     created_at,
     updated_at,
     event_ts
@@ -913,7 +915,6 @@ export const getObservationsGroupedByModel = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
   return res.map((r) => ({ model: r.name }));
 };
@@ -965,7 +966,6 @@ export const getObservationsGroupedByModelId = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
   return res.map((r) => ({ modelId: r.modelId }));
 };
@@ -1019,7 +1019,6 @@ export const getObservationsGroupedByName = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
   return res;
 };
@@ -1069,7 +1068,6 @@ export const getObservationsGroupedByToolName = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
   return res;
 };
@@ -1119,7 +1117,6 @@ export const getObservationsGroupedByCalledToolName = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
   return res;
 };
@@ -1172,7 +1169,6 @@ export const getObservationsGroupedByPromptName = async (
       kind: "analytic",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
 
   const prompts = res.map((r) => r.id).filter((r): r is string => Boolean(r));
@@ -1699,9 +1695,6 @@ export const getObservationCountsByProjectInCreationInterval = async ({
       start: convertDateToClickhouseDateTime(start),
       end: convertDateToClickhouseDateTime(end),
     },
-    clickhouseConfigs: {
-      request_timeout: 120000, // 2 minutes timeout
-    },
     tags: {
       feature: "tracing",
       type: "observation",
@@ -1807,18 +1800,7 @@ export const getObservationsForBlobStorageExport = function (
       cost_details,
       completion_start_time,
       prompt_name,
-      prompt_version,
-      total_cost,
-      if(isNull(end_time), NULL, date_diff('millisecond', start_time, end_time) / 1000) as latency,
-      if(isNull(completion_start_time), NULL, date_diff('millisecond', start_time, completion_start_time) / 1000) as time_to_first_token,
-      internal_model_id as model_id,
-      created_at,
-      updated_at,
-      prompt_id,
-      tool_calls,
-      tool_call_names,
-      tool_definitions,
-      usage_pricing_tier_name
+      prompt_version
     FROM observations FINAL
     WHERE project_id = {projectId: String}
     AND start_time >= {minTimestamp: DateTime64(3)}

@@ -4,9 +4,6 @@ import {
   ScoreSourceType,
   AGGREGATABLE_SCORE_TYPES,
   AggregatableScoreDataType,
-  ScoreByDataType,
-  LISTABLE_SCORE_TYPES,
-  ListableScoreDataType,
 } from "../../domain/scores";
 import {
   commandClickhouse,
@@ -46,12 +43,8 @@ import { recordDistribution } from "../instrumentation";
 import { prisma } from "../../db";
 import { measureAndReturn } from "../clickhouse/measureAndReturn";
 import { scoresColumnsTableUiColumnDefinitions } from "../tableMappings/mapScoresColumnsTable";
-import {
-  eventsTraceMetadata,
-  eventsExperimentTraceIds,
-  eventsExperiments,
-} from "../queries/clickhouse-sql/query-fragments";
 import { scoresTableCols } from "../../tableDefinitions/scoresTable";
+import { eventsTraceMetadata } from "../queries/clickhouse-sql/query-fragments";
 
 export const searchExistingAnnotationScore = async (
   projectId: string,
@@ -133,7 +126,7 @@ export const getScoresByIds = async (
     scoreId,
     source,
     scoreScope: "all",
-    dataTypes: LISTABLE_SCORE_TYPES,
+    dataTypes: AGGREGATABLE_SCORE_TYPES,
   });
 };
 
@@ -164,7 +157,6 @@ export type GetScoresForTracesProps<
 > = {
   projectId: string;
   traceIds: string[];
-  level?: "trace" | "observation" | "all";
   timestamp?: Date;
   limit?: number;
   offset?: number;
@@ -187,7 +179,7 @@ type GetScoresForSessionsProps<
   includeHasMetadata?: IncludeHasMetadata;
 };
 
-type GetScoresForExperimentsProps<
+type GetScoresForDatasetRunsProps<
   ExcludeMetadata extends boolean,
   IncludeHasMetadata extends boolean,
 > = {
@@ -251,7 +243,7 @@ export const getScoresForSessions = async <
       sessionIds,
       limit,
       offset,
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "sessions",
@@ -268,11 +260,11 @@ export const getScoresForSessions = async <
   );
 };
 
-export const getScoresForExperiments = async <
+export const getScoresForDatasetRuns = async <
   ExcludeMetadata extends boolean,
   IncludeHasMetadata extends boolean,
 >(
-  props: GetScoresForExperimentsProps<ExcludeMetadata, IncludeHasMetadata>,
+  props: GetScoresForDatasetRunsProps<ExcludeMetadata, IncludeHasMetadata>,
 ) => {
   const {
     projectId,
@@ -399,93 +391,6 @@ export const getTraceScoresForDatasetRuns = async (
   }));
 };
 
-export const getScoresForExperimentItems = async (
-  projectId: string,
-  experimentIds: string[],
-): Promise<
-  Array<
-    ScoreByDataType<AggregatableScoreDataType> & {
-      experimentId: string;
-      hasMetadata: boolean;
-    }
-  >
-> => {
-  if (experimentIds.length === 0) return [];
-
-  // Build events subquery using the query builder
-  const eventsSubquery = eventsExperiments({
-    projectId,
-    experimentIds,
-  })
-    .selectRaw("e.project_id", "e.experiment_id", "e.trace_id")
-    .buildWithParams();
-
-  const query = `
-    SELECT
-      s.id as id,
-      s.timestamp as timestamp,
-      s.project_id as project_id,
-      s.environment as environment,
-      s.trace_id as trace_id,
-      s.session_id as session_id,
-      s.observation_id as observation_id,
-      s.dataset_run_id as dataset_run_id,
-      s.name as name,
-      s.value as value,
-      s.source as source,
-      s.comment as comment,
-      s.author_user_id as author_user_id,
-      s.config_id as config_id,
-      s.data_type as data_type,
-      s.string_value as string_value,
-      s.queue_id as queue_id,
-      s.execution_trace_id as execution_trace_id,
-      s.created_at as created_at,
-      s.updated_at as updated_at,
-      s.event_ts as event_ts,
-      s.is_deleted as is_deleted,
-      length(mapKeys(s.metadata)) > 0 AS has_metadata,
-      e.experiment_id as experiment_id
-    FROM (${eventsSubquery.query}) e
-    JOIN scores s FINAL ON e.trace_id = s.trace_id
-      AND e.project_id = s.project_id
-    WHERE s.project_id = {projectId: String}
-      AND s.data_type IN ({dataTypes: Array(String)})
-    ORDER BY s.event_ts DESC
-    LIMIT 1 BY s.id, s.project_id, e.experiment_id
-  `;
-
-  const rows = await queryClickhouse<
-    Omit<ScoreRecordReadType, "metadata"> & {
-      has_metadata: 0 | 1;
-      experiment_id: string;
-    }
-  >({
-    query,
-    params: {
-      projectId,
-      ...eventsSubquery.params,
-      dataTypes: AGGREGATABLE_SCORE_TYPES,
-    },
-    tags: {
-      feature: "experiments",
-      type: "trace-scores",
-      kind: "list",
-      projectId,
-    },
-  });
-
-  const includeMetadataPayload = false;
-  return rows.map((row) => ({
-    ...convertClickhouseScoreToDomain<false, AggregatableScoreDataType>(
-      { ...row, metadata: {} },
-      includeMetadataPayload,
-    ),
-    experimentId: row.experiment_id,
-    hasMetadata: !!row.has_metadata,
-  }));
-};
-
 const getScoresForTracesInternal = async <
   ExcludeMetadata extends boolean,
   IncludeHasMetadata extends boolean,
@@ -498,7 +403,6 @@ const getScoresForTracesInternal = async <
   const {
     projectId,
     traceIds,
-    level = "all",
     timestamp,
     dataTypes,
     limit,
@@ -510,12 +414,6 @@ const getScoresForTracesInternal = async <
   } = props;
 
   const select = formatMetadataSelect(excludeMetadata, includeHasMetadata);
-  const levelFilter =
-    level === "trace"
-      ? "AND s.observation_id IS NULL"
-      : level === "observation"
-        ? "AND s.observation_id IS NOT NULL"
-        : "";
 
   const query = `
       select
@@ -525,7 +423,6 @@ const getScoresForTracesInternal = async <
       AND s.trace_id IN ({traceIds: Array(String)})
       ${dataTypes ? `AND s.data_type IN ({dataTypes: Array(String)})` : ""}
       ${timestamp ? `AND s.timestamp >= {traceTimestamp: DateTime64(3)} - ${SCORE_TO_TRACE_OBSERVATIONS_INTERVAL}` : ""}
-      ${levelFilter}
       ORDER BY s.event_ts DESC
       LIMIT 1 BY s.id, s.project_id
       ${limit && offset ? `limit {limit: Int32} offset {offset: Int32}` : ""}
@@ -596,7 +493,7 @@ export const getScoresForTraces = async <
 ) => {
   return getScoresForTracesInternal({
     ...props,
-    dataTypes: LISTABLE_SCORE_TYPES,
+    dataTypes: AGGREGATABLE_SCORE_TYPES,
   });
 };
 
@@ -675,7 +572,7 @@ export const getScoresForObservations = async <
     params: {
       projectId: projectId,
       observationIds: observationIds,
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
       limit: limit,
       offset: offset,
     },
@@ -703,20 +600,6 @@ export const getScoresForObservations = async <
   }));
 };
 
-/**
- * Event/experiment column mappings for building WHERE filters inside the events CTE.
- * Maps to actual events_proto columns with the "e" prefix used by EventsQueryBuilder.
- */
-const scoresEventsFilterMapping = [
-  {
-    uiTableName: "Experiment IDs",
-    uiTableId: "experimentIds",
-    clickhouseTableName: "events_proto",
-    clickhouseSelect: "experiment_id",
-    queryPrefix: "e",
-  },
-];
-
 export const getScoresGroupedByNameSourceType = async ({
   projectId,
   filter,
@@ -736,63 +619,23 @@ export const getScoresGroupedByNameSourceType = async ({
       scoresTableCols,
     ),
   );
+  const scoresFilterRes = scoresFilter.apply();
 
-  // Separate scores-only filters from event/experiment filters
-  const nonEventFilters = scoresFilter.filter(
-    (f) => !f.clickhouseTable.startsWith("events_"),
-  );
-
-  const scoresFilterRes = nonEventFilters.apply();
-
-  // Only join dataset run items if there is a dataset run items filter
-  const performDatasetRunItemsJoin = scoresFilter.some(
+  // Only join dataset run items and traces if there is a dataset run items filter
+  const performDatasetRunItemsAndTracesJoin = scoresFilter.some(
     (f) => f.clickhouseTable === "dataset_run_items_rmt",
   );
-
-  // Extract event-level filter entries from the frontend filter state
-  const eventFilterState = filter.filter((filterEntry) =>
-    scoresEventsFilterMapping.some(
-      (col) =>
-        col.uiTableName === filterEntry.column ||
-        col.uiTableId === filterEntry.column,
-    ),
-  );
-
-  let eventsCTE = "";
-  let eventsCTEParams: Record<string, unknown> = {};
-  const hasEventsFilters = eventFilterState.length > 0;
-
-  let eventsFilterRes;
-  if (hasEventsFilters) {
-    const eventsBuilder = eventsExperimentTraceIds(projectId);
-
-    // Create filters from the event filter state using the proper column mappings
-    const cteEventFilters = new FilterList(
-      createFilterFromFilterState(eventFilterState, scoresEventsFilterMapping),
-    );
-    eventsFilterRes = cteEventFilters.apply();
-    if (eventsFilterRes.query) {
-      eventsBuilder.where(eventsFilterRes);
-    }
-
-    const { query: cteQuery, params: cteParams } =
-      eventsBuilder.buildWithParams();
-    eventsCTE = `WITH experiment_events AS (${cteQuery})`;
-    Object.assign(eventsCTEParams, cteParams);
-  }
 
   // We mainly use queries like this to retrieve filter options.
   // Therefore, we can skip final as some inaccuracy in count is acceptable.
 
   const query = `
-    ${eventsCTE}
-    SELECT
+    select
       s.name as name,
       s.source as source,
       s.data_type as data_type
     FROM scores s
-    ${performDatasetRunItemsJoin ? `JOIN dataset_run_items_rmt dri ON s.trace_id = dri.trace_id AND s.project_id = dri.project_id` : ""}
-    ${hasEventsFilters ? `ANY JOIN experiment_events e ON s.trace_id = e.trace_id AND s.project_id = e.project_id` : ""}
+    ${performDatasetRunItemsAndTracesJoin ? `JOIN dataset_run_items_rmt dri ON s.trace_id = dri.trace_id AND s.project_id = dri.project_id` : ""}
     WHERE s.project_id = {projectId: String}
     ${scoresFilterRes?.query ? `AND ${scoresFilterRes.query}` : ""}
     ${fromTimestamp ? `AND s.timestamp >= {fromTimestamp: DateTime64(3)}` : ""}
@@ -811,7 +654,7 @@ export const getScoresGroupedByNameSourceType = async ({
     query: query,
     params: {
       projectId: projectId,
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
       ...(fromTimestamp
         ? { fromTimestamp: convertDateToClickhouseDateTime(fromTimestamp) }
         : {}),
@@ -819,8 +662,6 @@ export const getScoresGroupedByNameSourceType = async ({
         ? { toTimestamp: convertDateToClickhouseDateTime(toTimestamp) }
         : {}),
       ...(scoresFilterRes ? scoresFilterRes.params : {}),
-      ...(eventsFilterRes ? eventsFilterRes.params : {}),
-      ...eventsCTEParams,
     },
     tags: {
       feature: "tracing",
@@ -828,32 +669,33 @@ export const getScoresGroupedByNameSourceType = async ({
       kind: "list",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
 
   return rows.map((row) => ({
     name: row.name,
     source: row.source as ScoreSourceType,
-    dataType: row.data_type as ListableScoreDataType,
+    dataType: row.data_type as AggregatableScoreDataType,
   }));
 };
 
 export const getNumericScoresGroupedByName = async (
   projectId: string,
-  filter?: FilterState,
+  timestampFilter?: FilterState,
 ) => {
-  // Despite the historical name of some callers, this accepts any score-table
-  // compatible filter. Trace tables use this to scope discovery to scores that
-  // roll up into trace aggregates, not just direct trace-level scores.
-  const chFilter = filter
-    ? createFilterFromFilterState(
-        filter,
-        scoresColumnsTableUiColumnDefinitions,
-        scoresTableCols,
-      )
+  const chFilter = timestampFilter
+    ? createFilterFromFilterState(timestampFilter, [
+        {
+          uiTableName: "Timestamp",
+          uiTableId: "timestamp",
+          clickhouseTableName: "scores",
+          clickhouseSelect: "timestamp",
+        },
+      ])
     : undefined;
 
-  const filterRes = chFilter ? new FilterList(chFilter).apply() : undefined;
+  const timestampFilterRes = chFilter
+    ? new FilterList(chFilter).apply()
+    : undefined;
 
   // We mainly use queries like this to retrieve filter options.
   // Therefore, we can skip final as some inaccuracy in count is acceptable.
@@ -863,7 +705,7 @@ export const getNumericScoresGroupedByName = async (
       from scores s
       WHERE s.project_id = {projectId: String}
       AND has(['NUMERIC', 'BOOLEAN'], s.data_type)
-      ${filterRes?.query ? `AND ${filterRes.query}` : ""}
+      ${timestampFilterRes?.query ? `AND ${timestampFilterRes.query}` : ""}
       GROUP BY name
       ORDER BY count() desc
       LIMIT 1000;
@@ -875,7 +717,7 @@ export const getNumericScoresGroupedByName = async (
     query: query,
     params: {
       projectId: projectId,
-      ...(filterRes ? filterRes.params : {}),
+      ...(timestampFilterRes ? timestampFilterRes.params : {}),
     },
     tags: {
       feature: "tracing",
@@ -883,7 +725,6 @@ export const getNumericScoresGroupedByName = async (
       kind: "list",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
 
   return rows;
@@ -891,19 +732,22 @@ export const getNumericScoresGroupedByName = async (
 
 export const getCategoricalScoresGroupedByName = async (
   projectId: string,
-  filter?: FilterState,
+  timestampFilter?: FilterState,
 ) => {
-  // Mirrors `getNumericScoresGroupedByName`: callers can provide any score
-  // scope filters, not just timestamp predicates.
-  const chFilter = filter
-    ? createFilterFromFilterState(
-        filter,
-        scoresColumnsTableUiColumnDefinitions,
-        scoresTableCols,
-      )
+  const chFilter = timestampFilter
+    ? createFilterFromFilterState(timestampFilter, [
+        {
+          uiTableName: "Timestamp",
+          uiTableId: "timestamp",
+          clickhouseTableName: "scores",
+          clickhouseSelect: "timestamp",
+        },
+      ])
     : undefined;
 
-  const filterRes = chFilter ? new FilterList(chFilter).apply() : undefined;
+  const timestampFilterRes = chFilter
+    ? new FilterList(chFilter).apply()
+    : undefined;
 
   const query = `
     SELECT
@@ -912,7 +756,7 @@ export const getCategoricalScoresGroupedByName = async (
     FROM scores s
     WHERE s.project_id = {projectId: String}
     AND s.data_type = 'CATEGORICAL'
-    ${filterRes?.query ? `AND ${filterRes.query}` : ""}
+    ${timestampFilterRes?.query ? `AND ${timestampFilterRes.query}` : ""}
     GROUP BY name
     ORDER BY count() DESC
     LIMIT 1000;
@@ -925,7 +769,7 @@ export const getCategoricalScoresGroupedByName = async (
     query: query,
     params: {
       projectId: projectId,
-      ...(filterRes ? filterRes.params : {}),
+      ...(timestampFilterRes ? timestampFilterRes.params : {}),
     },
     tags: {
       feature: "tracing",
@@ -933,7 +777,6 @@ export const getCategoricalScoresGroupedByName = async (
       kind: "list",
       projectId,
     },
-    preferredClickhouseService: "ReadOnly",
   });
 
   // Get score names from ClickHouse results to query score configs
@@ -1191,7 +1034,7 @@ const getScoresUiGeneric = async <T>(props: {
     input: {
       params: {
         projectId: projectId,
-        dataTypes: LISTABLE_SCORE_TYPES,
+        dataTypes: AGGREGATABLE_SCORE_TYPES,
         ...(scoresFilterRes ? scoresFilterRes.params : {}),
         limit: limit,
         offset: offset,
@@ -1395,7 +1238,7 @@ const getScoresUiGenericFromEvents = async <T>(props: {
     input: {
       params: {
         projectId,
-        dataTypes: LISTABLE_SCORE_TYPES,
+        dataTypes: AGGREGATABLE_SCORE_TYPES,
         ...(scoreOnlyFilterRes ? scoreOnlyFilterRes.params : {}),
         ...tracesCTEParams,
         limit,
@@ -1537,7 +1380,7 @@ export const getScoreNames = async (
     params: {
       projectId: projectId,
       ...(timestampFilterRes ? timestampFilterRes.params : {}),
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "tracing",
@@ -1566,8 +1409,6 @@ export const getScoreStringValues = async (
   );
   const timestampFilterRes = chFilter.apply();
 
-  // exclude TEXT scores as they are arbitrary by nature and hence have high cardinality
-  // which in turn can lead to performance issues
   const query = `
       select
         string_value,
@@ -1576,7 +1417,6 @@ export const getScoreStringValues = async (
       WHERE s.project_id = {projectId: String}
       AND string_value IS NOT NULL
       AND string_value != ''
-      AND s.data_type != 'TEXT'
       ${timestampFilterRes?.query ? `AND ${timestampFilterRes.query}` : ""}
       GROUP BY string_value
       ORDER BY count() desc
@@ -1843,7 +1683,7 @@ export const getAggregatedScoresForPrompts = async (
     params: {
       projectId,
       promptIds,
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "tracing",
@@ -1854,7 +1694,7 @@ export const getAggregatedScoresForPrompts = async (
   });
 
   return rows.map((row) => ({
-    ...convertScoreAggregation<ListableScoreDataType>(row),
+    ...convertScoreAggregation<AggregatableScoreDataType>(row),
     promptId: row.prompt_id,
     hasMetadata: !!row.has_metadata,
   }));
@@ -1883,10 +1723,7 @@ export const getScoreCountsByProjectInCreationInterval = async ({
     params: {
       start: convertDateToClickhouseDateTime(start),
       end: convertDateToClickhouseDateTime(end),
-      dataTypes: LISTABLE_SCORE_TYPES,
-    },
-    clickhouseConfigs: {
-      request_timeout: 120000, // 2 minutes timeout
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "tracing",
@@ -1962,7 +1799,7 @@ export const getDistinctScoreNames = async (p: {
     params: {
       projectId,
       cutoffCreatedAt: convertDateToClickhouseDateTime(cutoffCreatedAt),
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
       ...(scoreTimestampFilter
         ? {
             filterTimestamp: convertDateToClickhouseDateTime(
@@ -1996,16 +1833,12 @@ export const getScoresForBlobStorageExport = function (
       environment,
       trace_id,
       observation_id,
-      session_id,
-      dataset_run_id,
       name,
       value,
       source,
       comment,
       data_type,
-      string_value,
-      created_at,
-      updated_at
+      string_value
     FROM scores FINAL
     WHERE project_id = {projectId: String}
     AND timestamp >= {minTimestamp: DateTime64(3)}
@@ -2019,7 +1852,7 @@ export const getScoresForBlobStorageExport = function (
       projectId,
       minTimestamp: convertDateToClickhouseDateTime(minTimestamp),
       maxTimestamp: convertDateToClickhouseDateTime(maxTimestamp),
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "blobstorage",
@@ -2092,7 +1925,7 @@ export const getScoresForAnalyticsIntegrations = async function* (
       projectId,
       minTimestamp: convertDateToClickhouseDateTime(minTimestamp),
       maxTimestamp: convertDateToClickhouseDateTime(maxTimestamp),
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "posthog",
@@ -2265,7 +2098,7 @@ export const getScoreCountsByProjectAndDay = async ({
     params: {
       startDate: convertDateToClickhouseDateTime(startDate),
       endDate: convertDateToClickhouseDateTime(endDate),
-      dataTypes: LISTABLE_SCORE_TYPES,
+      dataTypes: AGGREGATABLE_SCORE_TYPES,
     },
     tags: {
       feature: "tracing",

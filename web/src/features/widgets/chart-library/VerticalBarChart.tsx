@@ -41,7 +41,6 @@ export const VerticalBarChart: React.FC<ChartProps> = ({
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          niceTicks="auto"
         />
         <YAxis
           type="number"

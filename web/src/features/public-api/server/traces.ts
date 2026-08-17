@@ -13,7 +13,7 @@ import {
   shouldSkipObservationsFinal,
 } from "@langfuse/shared/src/server";
 import {
-  LISTABLE_SCORE_TYPES,
+  AGGREGATABLE_SCORE_TYPES,
   type OrderByState,
   tracesTableCols,
 } from "@langfuse/shared";
@@ -376,7 +376,7 @@ async function buildTracesBaseQuery(
     ...appliedEnvironmentFilter.params,
     ...appliedFilter.params,
     projectId: props.projectId,
-    dataTypes: LISTABLE_SCORE_TYPES,
+    dataTypes: AGGREGATABLE_SCORE_TYPES,
     ...(props.limit !== undefined ? { limit: props.limit } : {}),
     ...(props.page !== undefined
       ? { offset: (props.page - 1) * props.limit }

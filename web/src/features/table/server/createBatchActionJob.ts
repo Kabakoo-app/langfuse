@@ -18,9 +18,7 @@ type CreateBatchActionJob = {
   projectId: string;
   actionId: Exclude<
     ActionId,
-    | "observation-add-to-dataset"
-    | "observation-run-batched-evaluation"
-    | "experiment-compare"
+    "observation-add-to-dataset" | "observation-run-batched-evaluation"
   >;
   tableName: BatchExportTableName;
   actionType: BatchActionType;

@@ -1,6 +1,5 @@
 import {
   type TriggerEventAction,
-  type FilterState,
   jsonSchemaNullable,
   InternalServerError,
 } from "@langfuse/shared";
@@ -28,12 +27,10 @@ export const promptVersionProcessor = async (
   event: EntityChangeEventType,
 ): Promise<void> => {
   try {
-    if (logger.isLevelEnabled("debug")) {
-      logger.debug(
-        `Processing prompt version change event for prompt ${event.promptId} for project ${event.projectId}`,
-        { event: JSON.stringify(event, null, 2) },
-      );
-    }
+    logger.info(
+      `Processing prompt version change event for prompt ${event.promptId} for project ${event.projectId}`,
+      { event: JSON.stringify(event, null, 2) },
+    );
 
     // Get active prompt triggers
     const triggers = await getTriggerConfigurations({
@@ -69,27 +66,10 @@ export const promptVersionProcessor = async (
           }
         };
 
-        // Merge eventActions into the filter so InMemoryFilterService handles
-        // everything in one place. Done here rather than in convertTriggerToDomain
-        // because that function also serves the UI — injecting a synthetic condition
-        // there would corrupt the edit form and write it back to the DB on save.
-        const mergedFilter: FilterState =
-          trigger.eventActions.length > 0
-            ? [
-                ...trigger.filter,
-                {
-                  column: "action",
-                  operator: "any of",
-                  type: "stringOptions",
-                  value: trigger.eventActions,
-                },
-              ]
-            : trigger.filter;
-
         // Use InMemoryFilterService for all filtering including actions
         const eventMatches = InMemoryFilterService.evaluateFilter(
           eventData,
-          mergedFilter,
+          trigger.filter,
           fieldMapper,
         );
 

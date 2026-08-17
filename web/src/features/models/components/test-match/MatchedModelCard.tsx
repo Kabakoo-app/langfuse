@@ -6,13 +6,18 @@ import {
 } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
 
-export type MatchedModelCardProps = {
+type MatchedModelCardProps = {
+  projectId: string;
   model: {
+    id: string;
     modelName: string;
     matchPattern: string;
     projectId: string | null;
   };
+  pricingTierId: string;
 };
+
+export type { MatchedModelCardProps };
 
 export function MatchedModelCard({ model }: MatchedModelCardProps) {
   const isLangfuseModel = !model.projectId;

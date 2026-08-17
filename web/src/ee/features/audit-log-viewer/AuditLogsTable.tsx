@@ -187,7 +187,6 @@ export function AuditLogsTable(props: AuditLogsTableProps) {
             state: paginationState,
           }}
           rowHeight={rowHeight}
-          cellPadding="comfortable"
         />
       </SettingsTableCard>
     </>

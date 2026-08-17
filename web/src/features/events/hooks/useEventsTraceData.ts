@@ -6,7 +6,7 @@ import {
 } from "@/src/features/events/lib/eventsToTraceAdapter";
 import {
   filterAndValidateDbScoreList,
-  ScoreDataTypeArray,
+  AGGREGATABLE_SCORE_TYPES,
   ScoreDataTypeEnum,
   type ScoreDomain,
 } from "@langfuse/shared";
@@ -98,7 +98,6 @@ export function useEventsTraceData(
         : [],
       minStartTime: timeRange?.min ?? new Date(),
       maxStartTime: timeRange?.max ?? new Date(),
-      truncated: false,
     },
     {
       enabled:
@@ -123,7 +122,7 @@ export function useEventsTraceData(
     // Validate and partition scores
     const validatedScores = filterAndValidateDbScoreList({
       scores: scoresQuery.data ?? [],
-      dataTypes: [...ScoreDataTypeArray],
+      dataTypes: [...AGGREGATABLE_SCORE_TYPES, ScoreDataTypeEnum.CORRECTION],
       onParseError: (e) => {
         console.error("[useEventsTraceData] Score validation error:", e);
       },
@@ -143,11 +142,7 @@ export function useEventsTraceData(
       events: observations,
       traceId,
       rootIO: rootIO
-        ? {
-            input: rootIO.input,
-            output: rootIO.output,
-            metadata: rootIO.metadata,
-          }
+        ? { input: rootIO.input, output: rootIO.output }
         : undefined,
     });
 

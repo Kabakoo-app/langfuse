@@ -16,8 +16,6 @@ import { useAnnotationObjectData } from "./shared/hooks/useAnnotationObjectData"
 import { TraceAnnotationProcessor } from "./processors/TraceAnnotationProcessor";
 import { SessionAnnotationProcessor } from "./processors/SessionAnnotationProcessor";
 import { ObjectNotFoundCard } from "@/src/components/ui/object-not-found-card";
-import { useV4Beta } from "@/src/features/events/hooks/useV4Beta";
-import { useSession } from "next-auth/react";
 
 export const AnnotationQueueItemPage: React.FC<{
   annotationQueueId: string;
@@ -26,9 +24,6 @@ export const AnnotationQueueItemPage: React.FC<{
   queryItemId?: string;
 }> = ({ annotationQueueId, projectId, view, queryItemId }) => {
   const router = useRouter();
-  const { status: sessionStatus } = useSession();
-  const sessionLoaded = sessionStatus !== "loading";
-  const { isBetaEnabled } = useV4Beta();
   const isSingleItem = router.query.singleItem === "true";
   const [nextItemData, setNextItemData] = useState<
     RouterOutput["annotationQueues"]["fetchAndLockNext"] | null
@@ -44,8 +39,8 @@ export const AnnotationQueueItemPage: React.FC<{
   const itemId = isSingleItem ? queryItemId : seenItemIds[progressIndex];
 
   const seenItemData = api.annotationQueueItems.byId.useQuery(
-    { projectId, itemId: itemId as string, isBetaEnabled },
-    { enabled: !!itemId && sessionLoaded, refetchOnMount: false },
+    { projectId, itemId: itemId as string },
+    { enabled: !!itemId, refetchOnMount: false },
   );
 
   const fetchAndLockNextMutation =
@@ -54,19 +49,18 @@ export const AnnotationQueueItemPage: React.FC<{
   // Effects
   useEffect(() => {
     async function fetchNextItem() {
-      if (!itemId && !isSingleItem && sessionLoaded) {
+      if (!itemId && !isSingleItem) {
         const nextItem = await fetchAndLockNextMutation.mutateAsync({
           queueId: annotationQueueId,
           projectId,
           seenItemIds,
-          isBetaEnabled,
         });
         setNextItemData(nextItem);
       }
     }
     fetchNextItem();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionLoaded]);
+  }, []);
   const { configs } = useAnnotationQueueData({ annotationQueueId, projectId });
 
   const unseenPendingItemCount =
@@ -92,7 +86,6 @@ export const AnnotationQueueItemPage: React.FC<{
           queueId: annotationQueueId,
           projectId,
           seenItemIds,
-          isBetaEnabled,
         });
         setNextItemData(nextItem);
       }
@@ -149,8 +142,7 @@ export const AnnotationQueueItemPage: React.FC<{
     (seenItemData.isPending && itemId) ||
     (fetchAndLockNextMutation.isPending && !itemId) ||
     unseenPendingItemCount.isPending ||
-    objectData.isLoading ||
-    (!sessionLoaded && !isSingleItem)
+    objectData.isLoading
   ) {
     return <Skeleton className="h-full w-full" />;
   }
@@ -171,7 +163,6 @@ export const AnnotationQueueItemPage: React.FC<{
         queueId: annotationQueueId,
         projectId,
         seenItemIds,
-        isBetaEnabled,
       });
       setNextItemData(nextItem);
     }

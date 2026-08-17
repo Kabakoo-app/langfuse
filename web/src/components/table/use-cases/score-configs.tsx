@@ -284,7 +284,6 @@ export function ScoreConfigsTable({ projectId }: { projectId: string }) {
           columnOrder={columnOrder}
           onColumnOrderChange={setColumnOrder}
           rowHeight={rowHeight}
-          cellPadding="comfortable"
           className="gap-2"
         />
       </SettingsTableCard>

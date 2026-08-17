@@ -2,15 +2,6 @@ import { logger } from "@langfuse/shared/src/server";
 import type { WebhookInput } from "@langfuse/shared/src/server";
 import { env } from "../../env";
 
-/** Escape Slack mrkdwn special characters to prevent injection (e.g. <!channel>)
- * @see https://docs.slack.dev/messaging/formatting-message-text/#escaping */
-function escapeSlackMrkdwn(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 /**
  * Builds Slack Block Kit messages for different Langfuse event types
  */
@@ -40,17 +31,13 @@ export class SlackMessageBuilder {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${escapeSlackMrkdwn(prompt.name)}* (version ${prompt.version}) has been *${action}*`,
+          text: `*${prompt.name}* (version ${prompt.version}) has been *${action}*`,
         },
       },
       // Details section with key information
       {
         type: "section",
         fields: [
-          {
-            type: "mrkdwn",
-            text: `*Change author:*\n${escapeSlackMrkdwn(payload.user?.name || payload.user?.email || "API User")}`,
-          },
           {
             type: "mrkdwn",
             text: `*Type:*\n${prompt.type}`,
@@ -65,7 +52,7 @@ export class SlackMessageBuilder {
           },
           {
             type: "mrkdwn",
-            text: `*Tags:*\n${prompt.tags.length > 0 ? prompt.tags.map(escapeSlackMrkdwn).join(", ") : "None"}`,
+            text: `*Tags:*\n${prompt.tags.length > 0 ? prompt.tags.join(", ") : "None"}`,
           },
         ],
       },
@@ -76,7 +63,7 @@ export class SlackMessageBuilder {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: `*Commit Message:*\n> ${escapeSlackMrkdwn(prompt.commitMessage)}`,
+                text: `*Commit Message:*\n> ${prompt.commitMessage}`,
               },
             },
           ]
@@ -101,6 +88,16 @@ export class SlackMessageBuilder {
             },
           ]
         : []),
+      // Footer with timestamp
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `🕒 ${new Date().toLocaleString()} | Langfuse`,
+          },
+        ],
+      },
     ];
 
     return blocks;
@@ -117,6 +114,15 @@ export class SlackMessageBuilder {
           type: "mrkdwn",
           text: `*Langfuse Notification*\n${payload.type} event: *${payload.action}*`,
         },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `🕒 ${new Date().toLocaleString()} | Langfuse`,
+          },
+        ],
       },
     ];
   }

@@ -1,4 +1,4 @@
-import z from "zod";
+import z from "zod/v4";
 import { APIScoreSchemaV1, APIScoreV1 } from "../api/v1/schemas";
 import {
   ScoreDomain,

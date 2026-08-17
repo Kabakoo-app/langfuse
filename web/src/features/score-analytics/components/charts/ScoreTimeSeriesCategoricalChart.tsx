@@ -1,9 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
-import { Line, LineChart, XAxis, YAxis } from "recharts";
+import { Line, LineChart, XAxis, YAxis, Legend } from "recharts";
 import {
-  ChartActiveReferenceLine,
   ChartContainer,
-  ChartLegend,
   ChartTooltip,
   type ChartConfig,
 } from "@/src/components/ui/chart";
@@ -166,7 +164,6 @@ export function ScoreTimeSeriesCategoricalChart({
           tickLine={false}
           axisLine={false}
           label={{ value: "Count", angle: -90, position: "insideLeft" }}
-          niceTicks="auto"
           tickFormatter={(value) => value.toLocaleString()}
         />
         {categories.map((category) => {
@@ -185,7 +182,6 @@ export function ScoreTimeSeriesCategoricalChart({
             />
           );
         })}
-        <ChartActiveReferenceLine />
         <ChartTooltip
           content={
             <ScoreChartTooltip
@@ -195,7 +191,7 @@ export function ScoreTimeSeriesCategoricalChart({
             />
           }
         />
-        <ChartLegend
+        <Legend
           content={
             <ScoreChartLegendContent
               interactive={true}

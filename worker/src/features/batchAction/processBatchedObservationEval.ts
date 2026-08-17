@@ -44,13 +44,7 @@ export async function processBatchedObservationEval(params: {
     const results = await Promise.allSettled(
       batch.map((record) =>
         limit(async () => {
-          const toolCallNames = Array.isArray(record.tool_call_names)
-            ? record.tool_call_names
-            : [];
-          const observation = observationForEvalSchema.parse({
-            ...record,
-            tool_call_count: toolCallNames.length,
-          });
+          const observation = observationForEvalSchema.parse(record);
           await scheduleObservationEvals({
             observation,
             configs: evaluators,

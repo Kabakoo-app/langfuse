@@ -2,7 +2,7 @@ import { createTransport } from "nodemailer";
 import { parseConnectionUrl } from "nodemailer/lib/shared/index.js";
 import { render } from "@react-email/render";
 import { EvaluatorBlockReason } from "@prisma/client";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { sanitizeEmailSubject } from "../../../../utils/zod";
 import { logger } from "../../../logger";
 import { EvaluatorBlockedEmailTemplate } from "./EvaluatorBlockedEmailTemplate";
@@ -17,7 +17,6 @@ export type SendEvaluatorBlockedEmailParams = {
       string | undefined
     >
   >;
-  projectName: string;
   evaluatorName: string;
   blockReason: EvaluatorBlockReason;
   blockMessage: string;
@@ -27,7 +26,6 @@ export type SendEvaluatorBlockedEmailParams = {
 
 export const sendEvaluatorBlockedEmail = async ({
   env,
-  projectName,
   evaluatorName,
   blockReason,
   blockMessage,
@@ -44,11 +42,9 @@ export const sendEvaluatorBlockedEmail = async ({
   try {
     const mailer = createTransport(parseConnectionUrl(env.SMTP_CONNECTION_URL));
     const safeEvaluatorName = sanitizeEmailSubject(evaluatorName);
-    const safeProjectName = sanitizeEmailSubject(projectName);
     const subject = `⚠️ LLM evaluator "${safeEvaluatorName}" paused - action required`;
     const html = await render(
       EvaluatorBlockedEmailTemplate({
-        projectName: safeProjectName,
         evaluatorName: safeEvaluatorName,
         blockReason,
         blockMessage,

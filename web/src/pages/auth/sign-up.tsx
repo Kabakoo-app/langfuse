@@ -14,7 +14,7 @@ import { signIn } from "next-auth/react";
 import Head from "next/head";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
-import * as z from "zod";
+import * as z from "zod/v4";
 import { env } from "@/src/env.mjs";
 import { useState } from "react";
 import { LangfuseIcon } from "@/src/components/LangfuseLogo";
@@ -32,40 +32,8 @@ import { getSafeRedirectPath } from "@/src/utils/redirect";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import useLocalStorage from "@/src/components/useLocalStorage";
 
-import { type GetServerSidePropsContext } from "next";
-import { prisma } from "@langfuse/shared/src/db";
-import { getServerSideProps as getSignInServerSideProps } from "@/src/pages/auth/sign-in";
-
-export const getServerSideProps = async (context: GetServerSidePropsContext) => {
-  const result = await getSignInServerSideProps(context);
-  if (!("props" in result)) return result;
-
-  const props = result.props as PageProps;
-
-  if (props.signUpDisabled) {
-    // If signup is globally disabled, allow through only if the email query param
-    // has a pending invitation — this is the path for invited users.
-    const emailParam = context.query.email as string | undefined;
-    if (emailParam) {
-      const invitation = await prisma.membershipInvitation.findFirst({
-        where: { email: emailParam.toLowerCase() },
-        select: { id: true },
-      });
-      if (invitation) {
-        return { props: { ...props, signUpDisabled: false } };
-      }
-    }
-    // No valid invitation — redirect to sign-in instead of showing the form
-    return {
-      redirect: {
-        destination: "/auth/sign-in",
-        permanent: false,
-      },
-    };
-  }
-
-  return result;
-};
+// Use the same getServerSideProps function as src/pages/auth/sign-in.tsx
+export { getServerSideProps } from "@/src/pages/auth/sign-in";
 
 type NextAuthProvider = NonNullable<Parameters<typeof signIn>[0]>;
 

@@ -19,19 +19,6 @@ const mockGetByIdUseQuery = jest.fn();
 
 const queryParamStore = new Map<string, unknown>();
 
-type MockViewQueryResult = {
-  data?: unknown;
-  error?: unknown;
-  isSuccess?: boolean;
-  isError?: boolean;
-};
-
-const hasDefaultValue = (value: unknown): value is { __default: unknown } =>
-  typeof value === "object" && value !== null && "__default" in value;
-
-const isMockViewQueryResult = (value: unknown): value is MockViewQueryResult =>
-  typeof value === "object" && value !== null;
-
 jest.mock("next/router", () => ({
   useRouter: () => mockUseRouter(),
 }));
@@ -57,18 +44,20 @@ jest.mock("../../utils/api", () => ({
       },
       getById: {
         useQuery: (...args: unknown[]) => {
-          const result = mockGetByIdUseQuery(...args);
-          const normalizedResult = isMockViewQueryResult(result)
-            ? result
-            : undefined;
+          const result = mockGetByIdUseQuery(...args) as
+            | {
+                data?: unknown;
+                error?: unknown;
+                isSuccess?: boolean;
+                isError?: boolean;
+              }
+            | undefined;
 
           return {
-            data: normalizedResult?.data,
-            error: normalizedResult?.error ?? null,
-            isSuccess:
-              normalizedResult?.isSuccess ??
-              normalizedResult?.data !== undefined,
-            isError: normalizedResult?.isError ?? !!normalizedResult?.error,
+            data: result?.data,
+            error: result?.error ?? null,
+            isSuccess: result?.isSuccess ?? result?.data !== undefined,
+            isError: result?.isError ?? !!result?.error,
           };
         },
       },
@@ -87,7 +76,12 @@ jest.mock("use-query-params", () => {
   });
 
   const readDefault = (config: unknown) =>
-    hasDefaultValue(config) ? config.__default : null;
+    typeof config === "object" &&
+    config !== null &&
+    "__default" in config &&
+    (config as { __default?: unknown }).__default !== undefined
+      ? (config as { __default: unknown }).__default
+      : null;
 
   return {
     ...actual,
@@ -175,8 +169,6 @@ const TEST_OPTIONS = {
 
 function SavedViewHarness() {
   const queryFilter = useSidebarFilterState(TEST_FILTER_CONFIG, TEST_OPTIONS, {
-    stateLocation: "urlAndSessionStorage",
-    sessionFilterContextId: null,
     implicitDefaultConfig: {
       hiddenEnvironments: [...HIDDEN_ENVIRONMENTS],
     },
@@ -212,16 +204,10 @@ function SavedViewHarness() {
   );
 }
 
-function ViewSelectionHarness({
-  tableName = TableViewPresetTableName.Traces,
-  viewPersistenceKey,
-}: {
-  tableName?: TableViewPresetTableName;
-  viewPersistenceKey?: string;
-}) {
+function ViewSelectionHarness() {
   const [appliedFilters, setAppliedFilters] = useState<FilterState>([]);
   const { selectedViewId, handleSetViewId } = useTableViewManager({
-    tableName,
+    tableName: TableViewPresetTableName.Traces,
     projectId: "project-1",
     stateUpdaters: {
       setFilters: setAppliedFilters,
@@ -233,7 +219,6 @@ function ViewSelectionHarness({
       filterColumnDefinition: TEST_FILTER_CONFIG.columnDefinitions,
     },
     currentFilterState: appliedFilters,
-    viewPersistenceKey,
   });
 
   return (
@@ -436,70 +421,5 @@ describe("Saved view restore with implicit environment defaults", () => {
       expect(screen.getByTestId("selected-view-id").textContent).toBe("null");
       expect(screen.getByTestId("applied-filter-count").textContent).toBe("0");
     });
-  });
-
-  it("clears a permalink when the fetched saved view belongs to a different table", async () => {
-    mockGetByIdUseQuery.mockReturnValue({
-      data: {
-        id: "view-1",
-        name: "Traces saved view",
-        tableName: TableViewPresetTableName.Traces,
-        projectId: "project-1",
-        orderBy: null,
-        filters: OLD_SAVED_VIEW_FILTERS,
-        columnOrder: null,
-        columnVisibility: null,
-        searchQuery: "",
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-        createdBy: "user-1",
-        createdByUser: null,
-      },
-      error: null,
-    });
-
-    render(
-      <ViewSelectionHarness
-        tableName={TableViewPresetTableName.Observations}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("selected-view-id").textContent).toBe("null");
-    });
-
-    expect(screen.getByTestId("applied-filter-count").textContent).toBe("0");
-    expect(queryParamStore.has("viewId")).toBe(false);
-  });
-
-  it("does not restore a stored saved view from another mode's persistence key", async () => {
-    queryParamStore.delete("viewId");
-    mockUseRouter.mockReturnValue({
-      isReady: true,
-      query: {},
-    });
-
-    sessionStorage.setItem(
-      "observations-v3-project-1-viewId",
-      JSON.stringify("view-1"),
-    );
-
-    render(
-      <ViewSelectionHarness
-        tableName={TableViewPresetTableName.Observations}
-        viewPersistenceKey="observations-v4"
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("selected-view-id").textContent).toBe("null");
-    });
-
-    expect(screen.getByTestId("applied-filter-count").textContent).toBe("0");
-    expect(mockGetByIdUseQuery).toHaveBeenCalled();
-    expect(mockGetByIdUseQuery).toHaveBeenCalledWith(
-      { projectId: "project-1", viewId: null },
-      expect.objectContaining({ enabled: false }),
-    );
   });
 });

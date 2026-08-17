@@ -14,7 +14,7 @@ import {
   WidgetDomainSchema,
   DashboardDefinitionSchema,
 } from "./types";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { singleFilter } from "../../../";
 
 export class DashboardService {

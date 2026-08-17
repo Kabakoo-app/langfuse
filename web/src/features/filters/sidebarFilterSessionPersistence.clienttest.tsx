@@ -100,7 +100,6 @@ const FILTER_B: FilterState = [
 
 function SessionPersistenceHarness(props: { contextId?: string | null }) {
   const queryFilter = useSidebarFilterState(TEST_FILTER_CONFIG, TEST_OPTIONS, {
-    stateLocation: "urlAndSessionStorage",
     sessionFilterContextId: props.contextId ?? null,
   });
 

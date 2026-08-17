@@ -1,5 +1,5 @@
 import { InputJsonValue } from "@prisma/client/runtime/library";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // to be used for Prisma JSON type
 // @see: https://github.com/colinhacks/zod#json-type

@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import {
-  ChartActiveReferenceLine,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -57,7 +56,6 @@ export const VerticalBarChartTimeSeries: React.FC<ChartProps> = ({
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          niceTicks="auto"
         />
         {dimensions.map((dimension, index) => (
           <Bar
@@ -69,7 +67,6 @@ export const VerticalBarChartTimeSeries: React.FC<ChartProps> = ({
             stackId={dimensions.length > 1 ? "stack" : undefined}
           />
         ))}
-        <ChartActiveReferenceLine />
         <ChartTooltip
           cursor={false}
           contentStyle={{ backgroundColor: "hsl(var(--background))" }}

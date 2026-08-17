@@ -5,7 +5,7 @@ import {
   parseMetadata,
   isRichToolResult,
 } from "../helpers";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * AI SDK v5 Adapter

@@ -90,7 +90,6 @@ const HistogramChart = ({
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          niceTicks="auto"
         />
         <Bar
           dataKey="count"

@@ -102,20 +102,11 @@ export function SelectDashboardDialog({
                           selectedDashboardId === d.id ? "bg-muted" : ""
                         }`}
                       >
-                        <TableCell
-                          density="comfortable"
-                          className="font-medium"
-                        >
-                          {d.name}
-                        </TableCell>
-                        <TableCell
-                          density="comfortable"
-                          className="truncate"
-                          title={d.description}
-                        >
+                        <TableCell className="font-medium">{d.name}</TableCell>
+                        <TableCell className="truncate" title={d.description}>
                           {d.description}
                         </TableCell>
-                        <TableCell density="comfortable">
+                        <TableCell>
                           {new Date(d.updatedAt).toLocaleString()}
                         </TableCell>
                       </TableRow>

@@ -136,7 +136,7 @@ export default function PromptVersionTable({
     useScoreColumns<PromptVersionTableRow>({
       scoreColumnKey: "traceScores",
       projectId: projectId,
-      filter: scoreFilters.forTraceLevel(),
+      filter: scoreFilters.forTraces(),
       prefix: "Trace",
     });
 

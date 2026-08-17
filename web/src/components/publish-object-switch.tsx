@@ -100,6 +100,7 @@ export const PublishTraceSwitch = (props: {
 
   return (
     <Base
+      id={props.traceId}
       itemName="trace"
       isPublic={props.isPublic}
       size={props.size}
@@ -140,6 +141,7 @@ export const PublishSessionSwitch = (props: {
 
   return (
     <Base
+      id={props.sessionId}
       itemName="session"
       isPublic={props.isPublic}
       size={props.size}
@@ -158,6 +160,7 @@ export const PublishSessionSwitch = (props: {
 };
 
 const Base = (props: {
+  id: string;
   itemName: string;
   onChange: (value: boolean) => Promise<unknown>;
   isLoading: boolean;

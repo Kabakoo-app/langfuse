@@ -1,6 +1,6 @@
 import { singleFilter } from "../interfaces/filters";
 import { orderBy } from "../interfaces/orderBy";
-import z from "zod";
+import z from "zod/v4";
 
 export enum TableViewPresetTableName {
   Traces = "traces",
@@ -9,8 +9,6 @@ export enum TableViewPresetTableName {
   Sessions = "sessions",
   SessionDetail = "session-detail",
   Datasets = "datasets",
-  Experiments = "experiments",
-  ExperimentItems = "experiment-items",
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

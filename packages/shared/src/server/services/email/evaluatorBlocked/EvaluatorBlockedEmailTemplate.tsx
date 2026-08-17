@@ -16,7 +16,6 @@ import {
 import { EvaluatorBlockReason } from "@prisma/client";
 
 type EvaluatorBlockedEmailTemplateProps = {
-  projectName: string;
   evaluatorName: string;
   blockReason: EvaluatorBlockReason;
   blockMessage: string;
@@ -105,7 +104,6 @@ const getResolutionSteps = (blockReason: EvaluatorBlockReason) => {
 };
 
 export const EvaluatorBlockedEmailTemplate = ({
-  projectName,
   evaluatorName,
   blockReason,
   blockMessage,
@@ -116,8 +114,8 @@ export const EvaluatorBlockedEmailTemplate = ({
     <Html>
       <Head />
       <Preview>
-        LLM evaluator &quot;{evaluatorName}&quot; in project &quot;
-        {projectName}&quot; paused: {getReasonSummary(blockReason)}
+        LLM evaluator &quot;{evaluatorName}&quot; paused:{" "}
+        {getReasonSummary(blockReason)}
       </Preview>
       <Tailwind>
         <Body className="bg-background my-auto mx-auto font-sans">
@@ -137,9 +135,8 @@ export const EvaluatorBlockedEmailTemplate = ({
                 ⚠️ Evaluator Paused
               </Heading>
               <Text className="text-gray-700 text-sm leading-6">
-                The LLM evaluator &quot;{evaluatorName}&quot; in project &quot;
-                {projectName}&quot; was automatically paused because{" "}
-                {getReasonSummary(blockReason).toLowerCase()}.
+                The LLM evaluator &quot;{evaluatorName}&quot; was automatically
+                paused because {getReasonSummary(blockReason).toLowerCase()}.
               </Text>
             </Section>
 
@@ -177,8 +174,7 @@ export const EvaluatorBlockedEmailTemplate = ({
             <Section>
               <Text className="text-[#666666] text-[12px] leading-[24px]">
                 This notification was sent to {receiverEmail} regarding the
-                paused evaluator &quot;{evaluatorName}&quot; in project &quot;
-                {projectName}&quot;.
+                paused evaluator &quot;{evaluatorName}&quot;.
               </Text>
             </Section>
           </Container>

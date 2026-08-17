@@ -1,8 +1,5 @@
 import { eventsTableCols } from "@langfuse/shared";
-import {
-  omitFilterFacets,
-  type FilterConfig,
-} from "@/src/features/filters/lib/filter-config";
+import type { FilterConfig } from "@/src/features/filters/lib/filter-config";
 import type { ColumnToBackendKeyMap } from "@/src/features/filters/lib/filter-transform";
 import { renderFilterIcon } from "@/src/components/ItemBadge";
 
@@ -12,7 +9,7 @@ export const getEventsColumnName = (id: string): string => {
   if (!column) {
     throw new Error(`Column ${id} not found in eventsTableCols`);
   }
-  return column.name;
+  return column?.name;
 };
 
 /**
@@ -22,8 +19,6 @@ export const getEventsColumnName = (id: string): string => {
 export const OBSERVATION_EVENTS_COLUMN_TO_BACKEND_KEY: ColumnToBackendKeyMap = {
   // No mapping needed currently - events table column names align with UI
 };
-
-export type ObservationEventsOmittableFilterColumn = "sessionId" | "userId";
 
 export const observationEventsFilterConfig: FilterConfig = {
   tableName: "observations-events",
@@ -66,6 +61,17 @@ export const observationEventsFilterConfig: FilterConfig = {
       type: "categorical" as const,
       column: "level",
       label: getEventsColumnName("level"),
+    },
+    {
+      type: "positionInTrace" as const,
+      column: "positionInTrace",
+      label: getEventsColumnName("positionInTrace"),
+      mutuallyExclusiveWith: [
+        "score_categories",
+        "scores_avg",
+        "trace_score_categories",
+        "trace_scores_avg",
+      ],
     },
     {
       type: "categorical" as const,
@@ -251,9 +257,3 @@ export const observationEventsFilterConfig: FilterConfig = {
     },
   ],
 };
-
-export function getObservationEventsFilterConfig(
-  omittedFilter: ObservationEventsOmittableFilterColumn[] = [],
-): FilterConfig {
-  return omitFilterFacets(observationEventsFilterConfig, omittedFilter);
-}

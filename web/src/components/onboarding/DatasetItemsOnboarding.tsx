@@ -43,7 +43,6 @@ const DatasetItemEntryPointRow = ({
     <div
       role="button"
       tabIndex={0}
-      aria-disabled={disabled}
       className={cn(
         "border-border flex h-20 items-center gap-4 rounded-lg border p-4 transition-colors",
         disabled
@@ -51,16 +50,6 @@ const DatasetItemEntryPointRow = ({
           : "bg-card hover:bg-accent/50 cursor-pointer",
       )}
       onClick={!disabled ? onClick : undefined}
-      onKeyDown={
-        !disabled
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onClick?.();
-              }
-            }
-          : undefined
-      }
       title={
         !hasAccess
           ? "You don't have access to this feature, please contact your administrator"

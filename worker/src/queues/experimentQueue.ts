@@ -23,7 +23,7 @@ export const experimentCreateQueueProcessor = async (
     return true;
   } catch (e) {
     if (isLLMCompletionError(e) && e.isRetryable) {
-      const retryResult = await retryLLMRateLimitError(job, {
+      await retryLLMRateLimitError(job, {
         table: "dataset_runs",
         idField: "runId",
         queue: ExperimentCreateQueue.getInstance(),
@@ -32,8 +32,7 @@ export const experimentCreateQueueProcessor = async (
         delayFn: delayInMs,
       });
 
-      if (retryResult.outcome === "scheduled") return;
-      if (retryResult.outcome === "queue_unavailable") throw e;
+      return;
     }
 
     if (isLLMCompletionError(e) || isUnrecoverableError(e)) return;

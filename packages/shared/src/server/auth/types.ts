@@ -1,4 +1,4 @@
-import z from "zod";
+import z from "zod/v4";
 import { Plan, plans } from "../../features/entitlements/plans";
 import { CloudConfigRateLimit } from "../../interfaces/rate-limits";
 import { ApiKeyScope, MakeOptional } from "../../";
@@ -54,11 +54,9 @@ export type AuthHeaderValidVerificationResultIngestion = {
   scope: ApiAccessScopeIngestion;
 };
 
-export type ApiAccessLevel = "organization" | "project" | "scores";
-
 type BaseApiAccessScope = {
   projectId: string | null;
-  accessLevel: ApiAccessLevel;
+  accessLevel: "organization" | "project" | "scores";
 };
 
 type ApiAccessScopeMetadata = {

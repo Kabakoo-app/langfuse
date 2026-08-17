@@ -1,7 +1,8 @@
 import { FilterState, TraceDomain } from "@langfuse/shared";
 import { tracesTableUiColumnDefinitions } from "@langfuse/shared/src/server";
 
-const _inMemoryTraceFilterColumns = [
+// Uses the uiTableId for mapping fields later.
+const evalTraceFilterColumns = [
   "id",
   "bookmarked",
   "name",
@@ -15,9 +16,6 @@ const _inMemoryTraceFilterColumns = [
   "tags",
 ] as const;
 
-type InMemoryTraceFilterColumn = (typeof _inMemoryTraceFilterColumns)[number];
-
-// Uses the uiTableId for mapping fields later.
 function getColumnDefinition(column: string) {
   const columnDef = tracesTableUiColumnDefinitions.find(
     (col) =>
@@ -31,33 +29,6 @@ function getColumnDefinition(column: string) {
   return columnDef;
 }
 
-function getInMemoryTraceFilterColumn(
-  column: string,
-): InMemoryTraceFilterColumn | null {
-  const columnDef = getColumnDefinition(column);
-
-  switch (columnDef.uiTableId) {
-    case "traceName":
-      return "name";
-    case "traceTags":
-      return "tags";
-    case "id":
-    case "bookmarked":
-    case "name":
-    case "environment":
-    case "timestamp":
-    case "userId":
-    case "sessionId":
-    case "metadata":
-    case "release":
-    case "version":
-    case "tags":
-      return columnDef.uiTableId;
-    default:
-      return null;
-  }
-}
-
 /**
  * Maps trace filter column names to trace object field values.
  * Uses the centralized table mapping to ensure consistency with UI column definitions.
@@ -66,12 +37,8 @@ export function mapTraceFilterColumn(
   trace: TraceDomain,
   column: string,
 ): unknown {
-  const inMemoryColumn = getInMemoryTraceFilterColumn(column);
-  if (!inMemoryColumn) {
-    throw new Error(`Unhandled column in trace filter mapping: ${column}`);
-  }
-
-  switch (inMemoryColumn) {
+  const columnDef = getColumnDefinition(column);
+  switch (columnDef.uiTableId) {
     case "id":
       return trace.id;
     case "name":
@@ -109,7 +76,11 @@ export function requiresDatabaseLookup(filter: FilterState): boolean {
   }
 
   for (const condition of filter) {
-    if (!getInMemoryTraceFilterColumn(condition.column)) {
+    if (
+      !evalTraceFilterColumns.some(
+        (c) => c === getColumnDefinition(condition.column).uiTableId,
+      )
+    ) {
       return true;
     }
   }

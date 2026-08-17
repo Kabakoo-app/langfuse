@@ -31,7 +31,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // OLD SCHEMA
 const OldDefaultModelPriceSchema = z.object({

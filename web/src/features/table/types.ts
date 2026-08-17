@@ -8,8 +8,6 @@ type BaseTableAction = {
   label: string;
   description: string;
   icon?: ReactElement<any>;
-  disabled?: boolean;
-  disabledReason?: string;
   accessCheck: {
     scope: ProjectScope;
     entitlement?: Entitlement;

@@ -321,7 +321,7 @@ export default function ModelDetailPage() {
             <div className="flex max-h-[calc(100vh-20rem)] flex-col">
               <Generations
                 projectId={projectId}
-                omittedFilter={["model"]}
+                omittedFilter={["Model"]}
                 modelId={model.id}
               />
             </div>

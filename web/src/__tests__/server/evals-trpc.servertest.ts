@@ -4,13 +4,7 @@ import { appRouter } from "@/src/server/api/root";
 import { createInnerTRPCContext } from "@/src/server/api/trpc";
 import { prisma } from "@langfuse/shared/src/db";
 import { createOrgProjectAndApiKey } from "@langfuse/shared/src/server";
-import {
-  createBooleanEvalOutputDefinition,
-  createCategoricalEvalOutputDefinition,
-  createNumericEvalOutputDefinition,
-  EvalTargetObject,
-  EvaluatorBlockReason,
-} from "@langfuse/shared";
+import { EvalTargetObject, EvaluatorBlockReason } from "@langfuse/shared";
 import type { Session } from "next-auth";
 
 const __orgIds: string[] = [];
@@ -227,98 +221,6 @@ describe("evals trpc", () => {
         { id: pausedEvaluator.id, displayStatus: "PAUSED" },
         { id: inactiveEvaluator.id, displayStatus: "INACTIVE" },
       ]);
-    });
-  });
-
-  describe("evals.templateNames", () => {
-    it("should return the latest template versions with output definitions", async () => {
-      const { project, caller } = await prepare();
-
-      await prisma.evalTemplate.create({
-        data: {
-          projectId: project.id,
-          name: "numeric-template",
-          version: 1,
-          prompt: "Score this response",
-          outputDefinition: createNumericEvalOutputDefinition({
-            reasoningDescription: "Why",
-            scoreDescription: "How good",
-          }),
-        },
-      });
-
-      const latestNumericTemplate = await prisma.evalTemplate.create({
-        data: {
-          projectId: project.id,
-          name: "numeric-template",
-          version: 2,
-          prompt: "Score this response again",
-          outputDefinition: createNumericEvalOutputDefinition({
-            reasoningDescription: "Why",
-            scoreDescription: "How good",
-          }),
-        },
-      });
-
-      const categoricalTemplate = await prisma.evalTemplate.create({
-        data: {
-          projectId: project.id,
-          name: "categorical-template",
-          version: 1,
-          prompt: "Classify this response",
-          outputDefinition: createCategoricalEvalOutputDefinition({
-            reasoningDescription: "Why",
-            scoreDescription: "Classification",
-            categories: ["correct", "incorrect"],
-          }),
-        },
-      });
-
-      const booleanTemplate = await prisma.evalTemplate.create({
-        data: {
-          projectId: project.id,
-          name: "boolean-template",
-          version: 1,
-          prompt: "Judge whether the response satisfies the criteria",
-          outputDefinition: createBooleanEvalOutputDefinition({
-            reasoningDescription: "Why",
-            scoreDescription:
-              "Return true if the response satisfies the criteria, otherwise false",
-          }),
-        },
-      });
-
-      const response = await caller.evals.templateNames({
-        projectId: project.id,
-        page: 0,
-        limit: 10,
-      });
-
-      expect(response.templates).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            latestId: latestNumericTemplate.id,
-            name: "numeric-template",
-            outputDefinition: expect.objectContaining({
-              dataType: "NUMERIC",
-            }),
-          }),
-          expect.objectContaining({
-            latestId: categoricalTemplate.id,
-            name: "categorical-template",
-            outputDefinition: expect.objectContaining({
-              dataType: "CATEGORICAL",
-            }),
-          }),
-          expect.objectContaining({
-            latestId: booleanTemplate.id,
-            name: "boolean-template",
-            outputDefinition: expect.objectContaining({
-              dataType: "BOOLEAN",
-            }),
-          }),
-        ]),
-      );
     });
   });
 
@@ -711,7 +613,7 @@ describe("evals trpc", () => {
   //         model: "test-model",
   //         modelParams: {},
   //         vars: [],
-  //         outputDefinition: {
+  //         outputSchema: {
   //           score: "test-score",
   //           reasoning: "test-reasoning",
   //         },
@@ -747,7 +649,7 @@ describe("evals trpc", () => {
   //         model: "test-model",
   //         modelParams: {},
   //         vars: [],
-  //         outputDefinition: {
+  //         outputSchema: {
   //           score: "test-score",
   //           reasoning: "test-reasoning",
   //         },
@@ -848,7 +750,7 @@ describe("evals trpc", () => {
   //         model: "test-model",
   //         modelParams: {},
   //         vars: [],
-  //         outputDefinition: {
+  //         outputSchema: {
   //           score: "test-score",
   //           reasoning: "test-reasoning",
   //         },

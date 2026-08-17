@@ -20,8 +20,6 @@ import {
   parseClickhouseUTCDateTimeFormat,
   queryClickhouse,
 } from "./clickhouse";
-import { postgresSearchCondition } from "../queries";
-import { TracingSearchType } from "../../interfaces/search";
 
 const emptyNormalizeOpts: { sanitizeControlChars?: boolean } = {};
 const emptyValidateOpts: { normalizeUndefinedToNull?: boolean } = {};
@@ -375,35 +373,16 @@ export async function upsertDatasetItem(
     [Implementation.VERSIONED]: async () => {
       // VERSIONED: Invalidate old row by setting valid_to, then create new row
       await prisma.$transaction(async (tx) => {
-        // 0. Re-read if there is an existing item to get the validFrom timestamp
-        const current = await tx.datasetItem.findFirst({
-          where: {
-            id: itemId,
-            projectId: props.projectId,
-            validTo: null,
-          },
-          orderBy: {
-            validFrom: "desc",
-          },
-        });
-
-        if (current && current.datasetId !== dataset.id) {
-          throw new LangfuseNotFoundError(
-            `Dataset item with id ${itemId} not found for project ${props.projectId}`,
-          );
-        }
-
-        const baseTs = current?.validFrom.getTime() ?? 0;
-        const newValidFrom = new Date(Math.max(Date.now(), baseTs + 1));
+        const newValidFrom = new Date();
 
         // 1. If updating existing item, invalidate the current version
-        if (current) {
+        if (existingItem) {
           await tx.datasetItem.update({
             where: {
               id_projectId_validFrom: {
-                id: current.id,
+                id: existingItem.id,
                 projectId: props.projectId,
-                validFrom: current.validFrom,
+                validFrom: existingItem.validFrom,
               },
             },
             data: {
@@ -949,6 +928,48 @@ function buildPrismaWhereFromFilterState(filterState: FilterState): any {
 }
 
 /**
+ * Builds SQL search filter for full-text search on dataset items.
+ * Applies ILIKE search on id, input, expectedOutput, and metadata fields.
+ * Returns Prisma.empty if no search query provided.
+ *
+ * @param tableAlias - The table alias to use (default 'di' for dataset items)
+ */
+function buildDatasetItemSearchCondition(
+  searchQuery?: string,
+  searchType?: ("id" | "content")[],
+  tableAlias: string = "di",
+): Prisma.Sql {
+  if (!searchQuery || searchQuery === "") {
+    return Prisma.empty;
+  }
+
+  const types = searchType ?? ["content"];
+  const searchConditions: Prisma.Sql[] = [];
+
+  if (types.includes("id")) {
+    searchConditions.push(
+      Prisma.sql`${Prisma.raw(tableAlias)}.id ILIKE ${`%${searchQuery}%`}`,
+    );
+  }
+
+  if (types.includes("content")) {
+    searchConditions.push(
+      Prisma.sql`${Prisma.raw(tableAlias)}.input::text ILIKE ${`%${searchQuery}%`}`,
+    );
+    searchConditions.push(
+      Prisma.sql`${Prisma.raw(tableAlias)}.expected_output::text ILIKE ${`%${searchQuery}%`}`,
+    );
+    searchConditions.push(
+      Prisma.sql`${Prisma.raw(tableAlias)}.metadata::text ILIKE ${`%${searchQuery}%`}`,
+    );
+  }
+
+  return searchConditions.length > 0
+    ? Prisma.sql` AND (${Prisma.join(searchConditions, " OR ")})`
+    : Prisma.empty;
+}
+
+/**
  * Builds SQL query for STATEFUL dataset items with search support.
  * Simple direct query without version logic.
  */
@@ -958,7 +979,7 @@ function buildStatefulDatasetItemsQuery(
   includeDatasetName: boolean,
   filter: FilterState,
   searchQuery?: string,
-  searchType?: TracingSearchType[],
+  searchType?: ("id" | "content")[],
   limit?: number,
   offset?: number,
 ): Prisma.Sql {
@@ -980,17 +1001,11 @@ function buildStatefulDatasetItemsQuery(
     "dataset_item_events",
   );
 
-  const searchCondition = postgresSearchCondition({
+  const searchCondition = buildDatasetItemSearchCondition(
     searchQuery,
-    searchType: searchType ?? ["content"],
-    tablePrefix: "di",
-    metadataColumns: ["id"],
-    contentColumns: {
-      content: ["input", "expected_output", "metadata"],
-      input: "input",
-      output: "expected_output",
-    },
-  });
+    searchType,
+    "di",
+  );
 
   const paginationClause =
     limit !== undefined
@@ -1027,7 +1042,7 @@ function buildStatefulDatasetItemsCountQuery(
   projectId: string,
   filter: FilterState,
   searchQuery?: string,
-  searchType?: TracingSearchType[],
+  searchType?: ("id" | "content")[],
 ): Prisma.Sql {
   const filterCondition = tableColumnsToSqlFilterAndPrefix(
     filter,
@@ -1035,17 +1050,11 @@ function buildStatefulDatasetItemsCountQuery(
     "dataset_item_events",
   );
 
-  const searchCondition = postgresSearchCondition({
+  const searchCondition = buildDatasetItemSearchCondition(
     searchQuery,
-    searchType: searchType ?? ["content"],
-    tablePrefix: "di",
-    metadataColumns: ["id"],
-    contentColumns: {
-      content: ["input", "expected_output", "metadata"],
-      input: "input",
-      output: "expected_output",
-    },
-  });
+    searchType,
+    "di",
+  );
 
   return Prisma.sql`
     SELECT COUNT(*) as count
@@ -1078,7 +1087,7 @@ function buildDatasetItemsAtVersionQuery(
   filter: FilterState,
   version: Date | undefined,
   searchQuery?: string,
-  searchType?: TracingSearchType[],
+  searchType?: ("id" | "content")[],
   limit?: number,
   offset?: number,
 ): Prisma.Sql {
@@ -1100,16 +1109,10 @@ function buildDatasetItemsAtVersionQuery(
     "dataset_item_events",
   );
 
-  const searchCondition = postgresSearchCondition({
+  const searchCondition = buildDatasetItemSearchCondition(
     searchQuery,
-    searchType: searchType ?? ["content"],
-    metadataColumns: ["id"],
-    contentColumns: {
-      content: ["input", "expected_output", "metadata"],
-      input: "input",
-      output: "expected_output",
-    },
-  });
+    searchType,
+  );
 
   const paginationClause =
     limit !== undefined
@@ -1158,7 +1161,7 @@ function buildDatasetItemsCountQuery(
   filter: FilterState,
   version?: Date,
   searchQuery?: string,
-  searchType?: TracingSearchType[],
+  searchType?: ("id" | "content")[],
 ): Prisma.Sql {
   const filterCondition = tableColumnsToSqlFilterAndPrefix(
     filter,
@@ -1166,16 +1169,10 @@ function buildDatasetItemsCountQuery(
     "dataset_item_events",
   );
 
-  const searchCondition = postgresSearchCondition({
+  const searchCondition = buildDatasetItemSearchCondition(
     searchQuery,
-    searchType: searchType ?? ["content"],
-    metadataColumns: ["id"],
-    contentColumns: {
-      content: ["input", "expected_output", "metadata"],
-      input: "input",
-      output: "expected_output",
-    },
-  });
+    searchType,
+  );
 
   // New temporal query using valid_from and valid_to
   // Much simpler and more performant - no DISTINCT ON or CTE needed!
@@ -1276,7 +1273,7 @@ async function getDatasetItemsInternal<
   filter: FilterState;
   version?: Date;
   searchQuery?: string;
-  searchType?: TracingSearchType[];
+  searchType?: ("id" | "content")[];
   limit?: number;
   offset?: number;
 }): Promise<
@@ -1332,7 +1329,7 @@ async function getDatasetItemsCountAtVersionInternal(params: {
   filterState: FilterState;
   version?: Date;
   searchQuery?: string;
-  searchType?: TracingSearchType[];
+  searchType?: ("id" | "content")[];
 }): Promise<number> {
   const query = buildDatasetItemsCountQuery(
     params.projectId,
@@ -1460,7 +1457,7 @@ export async function getDatasetItems<
   filterState: FilterState;
   version?: Date;
   searchQuery?: string;
-  searchType?: TracingSearchType[];
+  searchType?: ("id" | "content")[];
   includeIO?: IncludeIO;
   includeDatasetName?: IncludeDatasetName;
   limit?: number;
@@ -1577,7 +1574,7 @@ export async function getDatasetItemsCount(props: {
   filterState: FilterState;
   version?: Date;
   searchQuery?: string;
-  searchType?: TracingSearchType[];
+  searchType?: ("id" | "content")[];
 }): Promise<number> {
   return executeWithDatasetServiceStrategy(OperationType.READ, {
     [Implementation.STATEFUL]: async () => {

@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import { type NextApiRequest, type NextApiResponse } from "next";
-import { type ZodType, type z } from "zod";
+import { type ZodType, type z } from "zod/v4";
 import { ApiAuthService } from "@/src/features/public-api/server/apiAuth";
 import { prisma } from "@langfuse/shared/src/db";
 import {
   redis,
   type AuthHeaderValidVerificationResult,
-  type ApiAccessLevel,
   traceException,
   logger,
 } from "@langfuse/shared/src/server";
@@ -15,9 +14,6 @@ import { RateLimitService } from "@/src/features/public-api/server/RateLimitServ
 import { contextWithLangfuseProps } from "@langfuse/shared/src/server";
 import * as opentelemetry from "@opentelemetry/api";
 import { env } from "@/src/env.mjs";
-
-/** Access levels that can be accepted by project-scoped API routes. */
-type RouteAccessLevel = Exclude<ApiAccessLevel, "organization">;
 
 type RouteConfig<
   TQuery extends ZodType<any>,
@@ -44,41 +40,30 @@ type RouteConfig<
    * @default false
    */
   isAdminApiKeyAuthAllowed?: boolean;
-  /**
-   * Access levels accepted for this route. Defaults to ["project"] (Basic auth only).
-   * Set to ["project", "scores"] to also allow Bearer auth with a public key
-   * (which receives accessLevel "scores").
-   */
-  allowedAccessLevels?: RouteAccessLevel[];
   fn: (params: {
     query: z.infer<TQuery>;
     body: z.infer<TBody>;
     req: NextApiRequest;
     res: NextApiResponse;
     auth: AuthHeaderValidVerificationResult & {
-      scope: { projectId: string; accessLevel: RouteAccessLevel };
+      scope: { projectId: string; accessLevel: "project" };
     };
   }) => Promise<z.infer<TResponse>>;
 };
 
 /**
- * Verifies API key authentication (Basic or Bearer) using ApiAuthService.
+ * Verifies regular API key authentication using ApiAuthService.
  *
- * Delegates to ApiAuthService.verifyAuthHeaderAndReturnScope which handles
- * both Basic auth (public + secret key) and Bearer auth (public key only).
- * The caller controls which access levels are accepted via allowedAccessLevels.
+ * This function handles standard project API key authentication with Basic auth.
+ * Returns an auth scope object with project-level access.
  *
  * @param authHeader - The Authorization header from the request
- * @param allowedAccessLevels - Access levels to accept (default: ["project"])
- * @returns An auth scope object with the verified access level
+ * @returns An auth scope object with project-level access
  * @throws Error with appropriate message if authentication fails
  */
-async function verifyApiKeyAuth(
-  authHeader: string | undefined,
-  allowedAccessLevels: RouteAccessLevel[] = ["project"],
-): Promise<
+async function verifyBasicAuth(authHeader: string | undefined): Promise<
   AuthHeaderValidVerificationResult & {
-    scope: { projectId: string; accessLevel: RouteAccessLevel };
+    scope: { projectId: string; accessLevel: "project" };
   }
 > {
   const regularAuth = await new ApiAuthService(
@@ -90,14 +75,10 @@ async function verifyApiKeyAuth(
     throw { status: 401, message: regularAuth.error };
   }
 
-  if (
-    !(allowedAccessLevels as ApiAccessLevel[]).includes(
-      regularAuth.scope.accessLevel,
-    )
-  ) {
+  if (regularAuth.scope.accessLevel !== "project") {
     throw {
       status: 401,
-      message: "Access denied - insufficient permissions for this endpoint",
+      message: "Access denied - need to use basic auth with secret key",
     };
   }
 
@@ -110,7 +91,7 @@ async function verifyApiKeyAuth(
   }
 
   return regularAuth as AuthHeaderValidVerificationResult & {
-    scope: { projectId: string; accessLevel: RouteAccessLevel };
+    scope: { projectId: string; accessLevel: "project" };
   };
 }
 
@@ -163,9 +144,7 @@ async function verifyAdminApiKeyAuth(req: NextApiRequest): Promise<
   // Extract Bearer token
   const bearerToken = authHeader.replace("Bearer ", "");
 
-  // Verify both the Bearer token and header match the ADMIN_API_KEY.
-  // Keep this comparison in sync with the admin-key check in
-  // web/src/ee/features/admin-api/server/adminApiAuth.ts.
+  // Verify both the Bearer token and header match the ADMIN_API_KEY
   try {
     // timingSafeEqual throws on different input lengths, handle accordingly
     const bearerTokenEqual = crypto.timingSafeEqual(
@@ -219,25 +198,22 @@ async function verifyAdminApiKeyAuth(req: NextApiRequest): Promise<
 }
 
 /**
- * Verifies authentication for API routes with support for both regular API key
- * auth (Basic or Bearer) and admin API key auth.
+ * Verifies authentication for API routes with support for both basic and admin API key auth.
  *
- * This is the main authentication entry point that delegates to either admin
- * or regular API key auth based on the configuration and request headers.
+ * This is the main authentication entry point that delegates to either admin or basic auth
+ * based on the configuration and request headers.
  *
  * @param req - The Next.js API request
  * @param isAdminApiKeyAuthAllowed - Whether to allow admin API key authentication
- * @param allowedAccessLevels - Access levels to accept for regular API key auth
- * @returns An auth scope object with the verified access level
+ * @returns An auth scope object with project-level access
  * @throws Error with appropriate status code if authentication fails
  */
 export async function verifyAuth(
   req: NextApiRequest,
   isAdminApiKeyAuthAllowed: boolean,
-  allowedAccessLevels: RouteAccessLevel[] = ["project"],
 ): Promise<
   AuthHeaderValidVerificationResult & {
-    scope: { projectId: string; accessLevel: RouteAccessLevel };
+    scope: { projectId: string; accessLevel: "project" };
   }
 > {
   if (isAdminApiKeyAuthAllowed) {
@@ -247,15 +223,12 @@ export async function verifyAuth(
       // Admin auth succeeded
       return adminAuth;
     }
-    // Admin auth not attempted, fall back to regular API key auth
-    return await verifyApiKeyAuth(
-      req.headers.authorization,
-      allowedAccessLevels,
-    );
+    // Admin auth not attempted, fall back to basic auth
+    return await verifyBasicAuth(req.headers.authorization);
   }
 
-  // Only regular API key auth is allowed
-  return await verifyApiKeyAuth(req.headers.authorization, allowedAccessLevels);
+  // Only basic auth is allowed
+  return await verifyBasicAuth(req.headers.authorization);
 }
 
 export const createAuthedProjectAPIRoute = <
@@ -267,15 +240,14 @@ export const createAuthedProjectAPIRoute = <
 ): ((req: NextApiRequest, res: NextApiResponse) => Promise<void>) => {
   return async (req: NextApiRequest, res: NextApiResponse) => {
     let auth: AuthHeaderValidVerificationResult & {
-      scope: { projectId: string; accessLevel: RouteAccessLevel };
+      scope: { projectId: string; accessLevel: "project" };
     };
 
-    // Verify authentication (API key or admin API key)
+    // Verify authentication (basic or admin API key)
     try {
       auth = await verifyAuth(
         req,
         routeConfig.isAdminApiKeyAuthAllowed || false,
-        routeConfig.allowedAccessLevels || ["project"],
       );
     } catch (error: any) {
       const statusCode = error.status || 401;
@@ -322,7 +294,7 @@ export const createAuthedProjectAPIRoute = <
         req,
         res,
         auth: auth as AuthHeaderValidVerificationResult & {
-          scope: { projectId: string; accessLevel: RouteAccessLevel };
+          scope: { projectId: string; accessLevel: "project" };
         },
       });
 

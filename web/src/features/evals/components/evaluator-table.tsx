@@ -139,7 +139,6 @@ export default function EvaluatorTable({ projectId }: { projectId: string }) {
     newFilterOptions,
     {
       loading: false,
-      stateLocation: "urlAndSessionStorage",
       sessionFilterContextId: projectId,
     },
   );

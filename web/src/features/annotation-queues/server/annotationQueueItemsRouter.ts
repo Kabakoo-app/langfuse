@@ -20,12 +20,11 @@ import {
 } from "@langfuse/shared";
 import {
   getObservationById,
-  getObservationByIdFromEventsTable,
   getTraceIdsForObservations,
   logger,
 } from "@langfuse/shared/src/server";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 const isItemLocked = (item: AnnotationQueueItem) => {
   return (
@@ -40,9 +39,7 @@ const MAP_OBJECT_TYPE_TO_ACTION_PROPS: Record<
   {
     actionId: Exclude<
       ActionId,
-      | ActionId.ObservationAddToDataset
-      | ActionId.ObservationBatchEvaluation
-      | ActionId.ExperimentCompare
+      ActionId.ObservationAddToDataset | ActionId.ObservationBatchEvaluation
     >;
     tableName: BatchTableNames;
   }
@@ -88,7 +85,6 @@ export const queueItemRouter = createTRPCRouter({
       z.object({
         projectId: z.string(),
         itemId: z.string(),
-        isBetaEnabled: z.boolean().optional().default(false),
       }),
     )
     .query(async ({ input, ctx }) => {
@@ -126,15 +122,10 @@ export const queueItemRouter = createTRPCRouter({
       };
 
       if (item.objectType === AnnotationQueueObjectType.OBSERVATION) {
-        const clickhouseObservation = input.isBetaEnabled
-          ? await getObservationByIdFromEventsTable({
-              id: item.objectId,
-              projectId: input.projectId,
-            })
-          : await getObservationById({
-              id: item.objectId,
-              projectId: input.projectId,
-            });
+        const clickhouseObservation = await getObservationById({
+          id: item.objectId,
+          projectId: input.projectId,
+        });
 
         if (!clickhouseObservation) {
           throw new LangfuseNotFoundError("Observation not found");

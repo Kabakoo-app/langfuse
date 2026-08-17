@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from "@/src/components/ui/dialog";
 import { ChevronLeft } from "lucide-react";
+import type { BatchActionQuery } from "@langfuse/shared";
 
 // Step components
 import { DatasetChoiceStep } from "./DatasetChoiceStep";
@@ -19,15 +20,21 @@ import { FinalPreviewStep } from "./FinalPreviewStep";
 import { StatusStep } from "./StatusStep";
 
 // Hook
-import {
-  useAddToDatasetWizard,
-  type UseAddToDatasetWizardProps,
-} from "./useAddToDatasetWizard";
+import { useAddToDatasetWizard } from "./useAddToDatasetWizard";
 
 type AddObservationsToDatasetDialogProps = {
   projectId: string;
+  selectedObservationIds: string[];
+  query: BatchActionQuery;
+  selectAll: boolean;
+  totalCount: number;
   onClose: () => void;
-} & UseAddToDatasetWizardProps;
+  exampleObservation: {
+    id: string;
+    traceId: string;
+    startTime?: Date;
+  };
+};
 
 export function AddObservationsToDatasetDialog(
   props: AddObservationsToDatasetDialogProps,

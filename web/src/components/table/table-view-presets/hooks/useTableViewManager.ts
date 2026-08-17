@@ -6,6 +6,7 @@ import {
   type TableViewPresetState,
   type ColumnDefinition,
 } from "@langfuse/shared";
+import { type DefaultViewScope } from "@langfuse/shared/src/server";
 import { useRouter } from "next/router";
 import { useEffect, useCallback, useState, useRef } from "react";
 import { type VisibilityState } from "@tanstack/react-table";
@@ -30,7 +31,6 @@ interface TableStateUpdaters {
 interface UseTableStateProps {
   tableName: TableViewPresetTableName;
   projectId: string;
-  viewPersistenceKey?: string;
   stateUpdaters: TableStateUpdaters;
   validationContext?: {
     columns?: LangfuseColumnDef<any, any>[];
@@ -46,7 +46,6 @@ interface UseTableStateProps {
 export function useTableViewManager({
   projectId,
   tableName,
-  viewPersistenceKey,
   stateUpdaters,
   validationContext = {},
   currentFilterState,
@@ -59,14 +58,9 @@ export function useTableViewManager({
   const capture = usePostHogClientCapture();
   const pendingFiltersRef = useRef<FilterState | null>(null);
   const pendingFiltersPreviousStateRef = useRef<FilterState | null>(null);
-  // Session storage needs a mode-specific key because the same tableName can be
-  // rendered by different route variants (for example legacy vs v4 pages) with
-  // distinct saved-view IDs. Reusing tableName would restore stale IDs across
-  // modes and boot the user into an incompatible saved view.
-  const resolvedViewPersistenceKey = viewPersistenceKey ?? tableName;
 
   const [storedViewId, setStoredViewId] = useSessionStorage<string | null>(
-    `${resolvedViewPersistenceKey}-${projectId}-viewId`,
+    `${tableName}-${projectId}-viewId`,
     null,
   );
   const [selectedViewIdParam, setSelectedViewId] = useQueryParam(
@@ -202,7 +196,6 @@ export function useTableViewManager({
         validOrderBy = validateOrderBy(
           viewData.orderBy,
           validationContext.columns,
-          validationContext.filterColumnDefinition,
         );
       }
 
@@ -294,10 +287,6 @@ export function useTableViewManager({
     if (isInitializedRef.current) return;
     if (selectedViewIdRef.current !== requestedViewId) return;
     if (selectedViewData.id !== requestedViewId) return;
-    if (selectedViewData.tableName !== tableName) {
-      handleSetViewId(null);
-      return;
-    }
 
     // Track permalink visit
     capture("saved_views:permalink_visit", {
@@ -314,7 +303,6 @@ export function useTableViewManager({
     isSelectedViewSuccess,
     selectedViewData,
     selectedViewId,
-    handleSetViewId,
     capture,
     tableName,
     applyViewState,
@@ -379,6 +367,6 @@ export function useTableViewManager({
     applyViewState,
     handleSetViewId,
     selectedViewId,
-    defaultViewScope: resolvedDefault?.scope ?? null,
+    defaultViewScope: resolvedDefault?.scope as DefaultViewScope | null,
   };
 }

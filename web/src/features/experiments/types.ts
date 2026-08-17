@@ -1,5 +1,5 @@
 import { ZodModelConfig } from "@langfuse/shared";
-import z from "zod";
+import z from "zod/v4";
 
 export const CreateExperimentData = z.object({
   name: z

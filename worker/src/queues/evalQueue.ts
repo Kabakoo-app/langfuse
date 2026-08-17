@@ -211,7 +211,7 @@ export const evalJobExecutorQueueProcessorBuilder = (
           ? SecondaryEvalExecutionQueue.getInstance({ shardName: queueName })
           : EvalExecutionQueue.getInstance({ shardName: queueName });
 
-        const retryResult = await retryLLMRateLimitError(job, {
+        await retryLLMRateLimitError(job, {
           table: "job_executions",
           idField: "jobExecutionId",
           queue,
@@ -220,22 +220,20 @@ export const evalJobExecutorQueueProcessorBuilder = (
           delayFn: delayInMs,
         });
 
-        if (retryResult.outcome === "scheduled") {
-          // Use the deterministic execution trace ID to update the job execution
-          await prisma.jobExecution.update({
-            where: {
-              id: job.data.payload.jobExecutionId,
-              projectId: job.data.payload.projectId,
-            },
-            data: {
-              status: JobExecutionStatus.DELAYED,
-              executionTraceId,
-            },
-          });
+        // Use the deterministic execution trace ID to update the job execution
+        await prisma.jobExecution.update({
+          where: {
+            id: job.data.payload.jobExecutionId,
+            projectId: job.data.payload.projectId,
+          },
+          data: {
+            status: JobExecutionStatus.DELAYED,
+            executionTraceId,
+          },
+        });
 
-          // Return early as we have already scheduled a delayed retry
-          return;
-        }
+        // Return early as we have already scheduled a delayed retry
+        return;
       }
 
       // At this point there will be only 4xx LLMCompletionErrors that are not retryable and application errors
@@ -307,7 +305,7 @@ export const llmAsJudgeExecutionQueueProcessorBuilder =
         const queue = LLMAsJudgeExecutionQueue.getInstance({
           shardName: queueName,
         });
-        const retryResult = await retryLLMRateLimitError(job, {
+        await retryLLMRateLimitError(job, {
           table: "job_executions",
           idField: "jobExecutionId",
           queue,
@@ -316,20 +314,18 @@ export const llmAsJudgeExecutionQueueProcessorBuilder =
           delayFn: delayInMs,
         });
 
-        if (retryResult.outcome === "scheduled") {
-          await prisma.jobExecution.update({
-            where: {
-              id: job.data.payload.jobExecutionId,
-              projectId: job.data.payload.projectId,
-            },
-            data: {
-              status: JobExecutionStatus.DELAYED,
-              executionTraceId,
-            },
-          });
+        await prisma.jobExecution.update({
+          where: {
+            id: job.data.payload.jobExecutionId,
+            projectId: job.data.payload.projectId,
+          },
+          data: {
+            status: JobExecutionStatus.DELAYED,
+            executionTraceId,
+          },
+        });
 
-          return;
-        }
+        return;
       }
 
       await prisma.jobExecution.update({

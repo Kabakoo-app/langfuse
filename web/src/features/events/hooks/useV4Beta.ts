@@ -4,30 +4,24 @@ import { useCallback, useState } from "react";
 import posthog from "posthog-js";
 import { V4_BETA_ENABLED_POSTHOG_PROPERTY } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 
-type SetV4EnabledOptions = {
+type SetV4BetaEnabledOptions = {
   onSuccess?: () => void | Promise<void>;
 };
 
 const INTRO_DIALOG_SEEN_KEY = "v4-beta-intro-dialog-seen";
 
 export function useV4Beta() {
-  const {
-    data: session,
-    update: updateSession,
-    status: sessionStatus,
-  } = useSession();
+  const { data: session, update: updateSession } = useSession();
 
   const mutation = api.userAccount.setV4BetaEnabled.useMutation();
 
   const isBetaEnabled = session?.user?.v4BetaEnabled ?? false;
-  const canToggleV4 = session?.user?.canToggleV4 === true;
-  const isInitializing = sessionStatus === "loading";
   const [showIntroDialog, setShowIntroDialog] = useState(false);
   const [pendingOnSuccess, setPendingOnSuccess] =
-    useState<SetV4EnabledOptions["onSuccess"]>();
+    useState<SetV4BetaEnabledOptions["onSuccess"]>();
 
   const setBetaEnabled = useCallback(
-    (enabled: boolean, options?: SetV4EnabledOptions) => {
+    (enabled: boolean, options?: SetV4BetaEnabledOptions) => {
       mutation.mutate(
         { enabled },
         {
@@ -48,7 +42,7 @@ export function useV4Beta() {
   );
 
   const enableWithIntro = useCallback(
-    (options?: SetV4EnabledOptions) => {
+    (options?: SetV4BetaEnabledOptions) => {
       if (
         typeof window !== "undefined" &&
         !localStorage.getItem(INTRO_DIALOG_SEEN_KEY)
@@ -77,8 +71,6 @@ export function useV4Beta() {
 
   return {
     isBetaEnabled,
-    canToggleV4,
-    isInitializing,
     setBetaEnabled,
     enableWithIntro,
     showIntroDialog,

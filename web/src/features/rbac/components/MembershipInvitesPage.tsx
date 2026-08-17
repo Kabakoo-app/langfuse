@@ -10,13 +10,11 @@ import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganiz
 import { api } from "@/src/utils/api";
 import { safeExtract } from "@/src/utils/map-utils";
 import type { RouterOutput } from "@/src/utils/types";
-import { Copy, Trash } from "lucide-react";
+import { Trash } from "lucide-react";
 import { type Organization, type Role } from "@langfuse/shared";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import Header from "@/src/components/layouts/header";
 import useSessionStorage from "@/src/components/useSessionStorage";
-import { env } from "@/src/env.mjs";
-import { showSuccessToast } from "@/src/features/notifications/showSuccessToast";
 
 export type tmp = Organization;
 export type InvitesTableRow = {
@@ -30,7 +28,6 @@ export type InvitesTableRow = {
   } | null;
   meta: {
     inviteId: string;
-    email: string;
   };
 };
 
@@ -163,29 +160,9 @@ export function MembershipInvitesPage({
       id: "meta",
       header: "Actions",
       cell: ({ row }) => {
-        const { inviteId, email } = row.getValue(
-          "meta",
-        ) as InvitesTableRow["meta"];
-
-        const handleCopyLink = () => {
-          const basePath = env.NEXT_PUBLIC_BASE_PATH ?? "";
-          const targetPath = encodeURIComponent(`/organization/${orgId}`);
-          const encodedEmail = encodeURIComponent(email);
-          const url = `${globalThis.location.origin}${basePath}/auth/sign-up?targetPath=${targetPath}&email=${encodedEmail}`;
-          navigator.clipboard.writeText(url).then(() => {
-            showSuccessToast({
-              title: "Copied",
-              description: "Invite link copied to clipboard",
-              duration: 2000,
-            });
-          });
-        };
-
+        const { inviteId } = row.getValue("meta") as InvitesTableRow["meta"];
         return hasCudAccess ? (
           <div className="flex space-x-2">
-            <button onClick={handleCopyLink} title="Copy invite link">
-              <Copy size={14} />
-            </button>
             <button
               onClick={() => {
                 if (
@@ -209,7 +186,6 @@ export function MembershipInvitesPage({
     return {
       meta: {
         inviteId: invite.id,
-        email: invite.email,
       },
       email: invite.email,
       createdAt: invite.createdAt,

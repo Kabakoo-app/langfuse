@@ -89,15 +89,12 @@ export default withMiddlewares({
           : {}),
       };
 
-      const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
-
       const run = await createOrFetchDatasetRun({
         name: body.runName,
         description: body.runDescription ?? undefined,
         metadata: metadata,
         projectId: auth.scope.projectId,
         datasetId: datasetItem.datasetId,
-        createdAt,
       });
 
       const runItemId = v4();
@@ -105,6 +102,8 @@ export default withMiddlewares({
       /********************
        * RUN ITEM CREATION *
        ********************/
+
+      const createdAt = new Date();
 
       const event = {
         id: runItemId,

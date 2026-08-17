@@ -411,10 +411,7 @@ export default function DashboardDetail() {
   });
 
   return (
-    <DashboardQuerySchedulerProvider
-      scheduler={scheduler}
-      shouldBucketQueriesByTimeRange={!("from" in timeRange)}
-    >
+    <DashboardQuerySchedulerProvider scheduler={scheduler}>
       <Page
         withPadding
         scrollable

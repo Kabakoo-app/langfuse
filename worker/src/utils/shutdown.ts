@@ -16,7 +16,6 @@ import {
   batchProjectMediaCleaner,
   batchProjectBlobCleaner,
   batchTraceDeletionCleaner,
-  queueMetricsRunner,
 } from "../app";
 
 export const onShutdown: NodeJS.SignalsListener = async (signal) => {
@@ -48,9 +47,6 @@ export const onShutdown: NodeJS.SignalsListener = async (signal) => {
 
   // Stop batch trace deletion cleaner
   batchTraceDeletionCleaner?.stop();
-
-  // Stop queue metrics runner
-  queueMetricsRunner?.stop();
 
   // Shutdown workers (https://docs.bullmq.io/guide/going-to-production#gracefully-shut-down-workers)
   await WorkerManager.closeWorkers();

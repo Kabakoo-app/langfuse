@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import {
   ScoreSchemaExclReferencesAndDates,
   CategoricalData,
@@ -9,7 +9,7 @@ import {
 /**
  * Foundation schema for scores API v1 i.e. trace and observation scores ONLY
  *
- * Must be extended with score data specific schema (numeric, categorical, boolean, text)
+ * Must be extended with score data specific schema (numeric, categorical, boolean)
  * @see {@link NumericData}, {@link CategoricalData}, {@link BooleanData}
  */
 const ScoreFoundationSchemaV1 = ScoreSchemaExclReferencesAndDates.extend({
@@ -22,17 +22,8 @@ const ScoreFoundationSchemaV1 = ScoreSchemaExclReferencesAndDates.extend({
   observationId: z.string().nullish(),
 });
 
-// Response-only schema without input validation constraints (e.g. length limits)
-const TextData = z.object({
-  stringValue: z.string(),
-  dataType: z.literal("TEXT"),
-});
-
-export const APIScoreSchemaV1 = z.discriminatedUnion("dataType", [
-  ScoreFoundationSchemaV1.extend(NumericData.shape),
-  ScoreFoundationSchemaV1.extend(CategoricalData.shape),
-  ScoreFoundationSchemaV1.extend(BooleanData.shape),
-  ScoreFoundationSchemaV1.omit({ value: true }).extend(TextData.shape),
-]);
+export const APIScoreSchemaV1 = ScoreFoundationSchemaV1.and(
+  z.discriminatedUnion("dataType", [NumericData, CategoricalData, BooleanData]),
+);
 
 export type APIScoreV1 = z.infer<typeof APIScoreSchemaV1>;

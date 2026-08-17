@@ -15,8 +15,7 @@ import {
   BatchTableNames,
   BatchActionStatus,
   ActionId,
-  BatchEvalSourceTable,
-  getEvalTargetObjectFromSourceTable,
+  EvalTargetObject,
 } from "@langfuse/shared";
 import { env } from "@/src/env.mjs";
 import { CreateObservationBatchEvaluationActionSchema } from "../validation";
@@ -32,12 +31,7 @@ export const runEvaluationRouter = createTRPCRouter({
           scope: "evalJob:CUD",
         });
 
-        const {
-          projectId,
-          query,
-          evaluatorIds: rawEvaluatorIds,
-          sourceTable = BatchEvalSourceTable.EVENTS,
-        } = input;
+        const { projectId, query, evaluatorIds: rawEvaluatorIds } = input;
 
         if (env.LANGFUSE_ENABLE_EVENTS_TABLE_FLAGS !== "true") {
           throw new TRPCError({
@@ -45,13 +39,6 @@ export const runEvaluationRouter = createTRPCRouter({
             message: "Events table is not enabled for this instance.",
           });
         }
-
-        // Derive targetObject from sourceTable
-        const targetObject = getEvalTargetObjectFromSourceTable(sourceTable);
-        const scopeLabel =
-          sourceTable === BatchEvalSourceTable.EVENTS
-            ? "observation"
-            : "experiment";
 
         const requestedEvaluatorIds = Array.from(new Set(rawEvaluatorIds));
 
@@ -62,7 +49,7 @@ export const runEvaluationRouter = createTRPCRouter({
                 in: requestedEvaluatorIds,
               },
               projectId,
-              targetObject,
+              targetObject: EvalTargetObject.EVENT,
             },
             select: {
               id: true,
@@ -80,8 +67,8 @@ export const runEvaluationRouter = createTRPCRouter({
             code: "BAD_REQUEST",
             message:
               missingEvaluatorIds.length > 0
-                ? `Evaluators [${missingEvaluatorIds.join(", ")}] are missing or not ${scopeLabel}-scoped.`
-                : `Selected evaluators are missing or not ${scopeLabel}-scoped.`,
+                ? `Evaluators [${missingEvaluatorIds.join(", ")}] are missing or not observation-scoped.`
+                : "Selected evaluators are missing or not observation-scoped.",
           });
         }
 

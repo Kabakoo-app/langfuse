@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { addMinutes, format } from "date-fns";
 import { type DateTrunc } from "@langfuse/shared/src/server";
 

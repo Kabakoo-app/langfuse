@@ -86,7 +86,6 @@ async function handleGetBlobStorageIntegrations(
       fileType: integration.fileType,
       exportMode: integration.exportMode,
       exportStartDate: integration.exportStartDate,
-      compressed: integration.compressed,
       nextSyncAt: integration.nextSyncAt,
       lastSyncAt: integration.lastSyncAt,
       lastError: integration.lastError,
@@ -173,7 +172,6 @@ async function handleUpsertBlobStorageIntegration(
       fileType: validatedData.fileType,
       exportMode: validatedData.exportMode,
       exportStartDate: validatedData.exportStartDate ?? null,
-      compressed: validatedData.compressed,
     },
   });
 
@@ -193,7 +191,6 @@ async function handleUpsertBlobStorageIntegration(
     fileType: integration.fileType,
     exportMode: integration.exportMode,
     exportStartDate: integration.exportStartDate,
-    compressed: integration.compressed,
     nextSyncAt: integration.nextSyncAt,
     lastSyncAt: integration.lastSyncAt,
     lastError: integration.lastError,

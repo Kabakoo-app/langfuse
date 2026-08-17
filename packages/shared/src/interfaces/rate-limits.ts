@@ -1,4 +1,4 @@
-import z from "zod";
+import z from "zod/v4";
 import { ApiAccessScope } from "../server";
 
 export const RateLimitResource = z.enum([
@@ -10,7 +10,6 @@ export const RateLimitResource = z.enum([
   "legacy-ingestion",
   "datasets",
   "trace-delete",
-  "score-delete",
 ]);
 
 // result of the rate limit check.

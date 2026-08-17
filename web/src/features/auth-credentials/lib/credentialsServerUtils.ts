@@ -42,7 +42,7 @@ export async function createUserEmailPassword(
     },
   });
 
-  await createProjectMembershipsOnSignup(newUser, { userWasJustCreated: true });
+  await createProjectMembershipsOnSignup(newUser);
 
   return newUser.id;
 }

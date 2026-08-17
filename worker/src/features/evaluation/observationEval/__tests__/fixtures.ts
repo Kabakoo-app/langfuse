@@ -1,4 +1,4 @@
-import { vi, type Mock } from "vitest";
+import { vi } from "vitest";
 import { randomUUID } from "crypto";
 import { type Prisma } from "@langfuse/shared/src/db";
 import { type ObservationForEval, EvalTargetObject } from "@langfuse/shared";
@@ -12,20 +12,6 @@ import {
   createMockEvalExecutionDeps,
 } from "../../evalExecutionDeps";
 
-type MockSchedulerDeps = ObservationEvalSchedulerDeps & {
-  upsertJobExecution: Mock<ObservationEvalSchedulerDeps["upsertJobExecution"]>;
-  uploadObservationToS3: Mock<
-    ObservationEvalSchedulerDeps["uploadObservationToS3"]
-  >;
-  enqueueEvalJob: Mock<ObservationEvalSchedulerDeps["enqueueEvalJob"]>;
-};
-
-type MockProcessorDeps = ObservationEvalProcessorDeps & {
-  downloadObservationFromS3: Mock<
-    ObservationEvalProcessorDeps["downloadObservationFromS3"]
-  >;
-};
-
 /**
  * Creates a test ObservationForEval with sensible defaults.
  * All fields can be overridden.
@@ -34,7 +20,6 @@ type MockProcessorDeps = ObservationEvalProcessorDeps & {
 export function createTestObservation(
   overrides: Partial<ObservationForEval> = {},
 ): ObservationForEval {
-  const toolCallNames = overrides.tool_call_names ?? [];
   return {
     // Core identifiers
     span_id: `obs-${randomUUID()}`,
@@ -70,7 +55,6 @@ export function createTestObservation(
     tool_definitions: {},
     tool_calls: [],
     tool_call_names: [],
-    tool_call_count: toolCallNames.length,
 
     // Usage & Cost
     usage_details: { input: 100, output: 50 },
@@ -125,31 +109,20 @@ export function createTestEvalConfig(
  */
 export function createMockSchedulerDeps(
   overrides: Partial<{
-    upsertJobExecution: Mock<
-      ObservationEvalSchedulerDeps["upsertJobExecution"]
-    >;
-    uploadObservationToS3: Mock<
-      ObservationEvalSchedulerDeps["uploadObservationToS3"]
-    >;
-    enqueueEvalJob: Mock<ObservationEvalSchedulerDeps["enqueueEvalJob"]>;
+    createJobExecution: ReturnType<typeof vi.fn>;
+    uploadObservationToS3: ReturnType<typeof vi.fn>;
+    enqueueEvalJob: ReturnType<typeof vi.fn>;
   }> = {},
-): MockSchedulerDeps {
+): ObservationEvalSchedulerDeps {
   return {
     upsertJobExecution:
-      overrides.upsertJobExecution ??
-      vi
-        .fn<ObservationEvalSchedulerDeps["upsertJobExecution"]>()
-        .mockResolvedValue({ id: `job-exec-${randomUUID()}` }),
+      overrides.createJobExecution ??
+      vi.fn().mockResolvedValue({ id: `job-exec-${randomUUID()}` }),
     uploadObservationToS3:
       overrides.uploadObservationToS3 ??
-      vi
-        .fn<ObservationEvalSchedulerDeps["uploadObservationToS3"]>()
-        .mockResolvedValue(`observations/test/obs-123.json`),
+      vi.fn().mockResolvedValue(`observations/test/obs-123.json`),
     enqueueEvalJob:
-      overrides.enqueueEvalJob ??
-      vi
-        .fn<ObservationEvalSchedulerDeps["enqueueEvalJob"]>()
-        .mockResolvedValue(undefined),
+      overrides.enqueueEvalJob ?? vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -158,19 +131,15 @@ export function createMockSchedulerDeps(
  */
 export function createMockProcessorDeps(
   overrides: Partial<{
-    downloadObservationFromS3: Mock<
-      ObservationEvalProcessorDeps["downloadObservationFromS3"]
-    >;
+    downloadObservationFromS3: ReturnType<typeof vi.fn>;
   }> = {},
-): MockProcessorDeps {
+): ObservationEvalProcessorDeps {
   const defaultObservation = createTestObservation();
 
   return {
     downloadObservationFromS3:
       overrides.downloadObservationFromS3 ??
-      vi
-        .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
-        .mockResolvedValue(JSON.stringify(defaultObservation)),
+      vi.fn().mockResolvedValue(JSON.stringify(defaultObservation)),
   };
 }
 
@@ -285,7 +254,7 @@ export function createMockEvalTemplate(
     model: string;
     provider: string;
     modelParams: Record<string, unknown>;
-    outputDefinition: Record<string, string>;
+    outputSchema: Record<string, string>;
     vars: string[];
     createdAt: Date;
     updatedAt: Date;
@@ -302,7 +271,7 @@ export function createMockEvalTemplate(
     model: overrides.model ?? "gpt-4",
     provider: overrides.provider ?? "openai",
     modelParams: overrides.modelParams ?? {},
-    outputDefinition: overrides.outputDefinition ?? {
+    outputSchema: overrides.outputSchema ?? {
       score: "A number between 0 and 1",
       reasoning: "Explain your reasoning",
     },
@@ -326,34 +295,28 @@ export function createFullyMockedEvalPipeline(
   const uploadedData = new Map<string, unknown>();
   const observation = config.observation ?? createTestObservation();
 
-  const schedulerDeps: MockSchedulerDeps = {
+  const schedulerDeps: ObservationEvalSchedulerDeps = {
     upsertJobExecution: vi
-      .fn<ObservationEvalSchedulerDeps["upsertJobExecution"]>()
+      .fn()
       .mockResolvedValue({ id: `job-exec-${randomUUID()}` }),
-    uploadObservationToS3: vi
-      .fn<ObservationEvalSchedulerDeps["uploadObservationToS3"]>()
-      .mockImplementation(async (params) => {
-        const path =
-          config.s3UploadPath ??
-          `evals/${params.projectId}/observations/${params.observationId}.json`;
-        uploadedData.set(path, params.data);
-        return path;
-      }),
-    enqueueEvalJob: vi
-      .fn<ObservationEvalSchedulerDeps["enqueueEvalJob"]>()
-      .mockResolvedValue(undefined),
+    uploadObservationToS3: vi.fn().mockImplementation(async (params) => {
+      const path =
+        config.s3UploadPath ??
+        `evals/${params.projectId}/observations/${params.observationId}.json`;
+      uploadedData.set(path, params.data);
+      return path;
+    }),
+    enqueueEvalJob: vi.fn().mockResolvedValue(undefined),
   };
 
-  const processorDeps: MockProcessorDeps = {
-    downloadObservationFromS3: vi
-      .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
-      .mockImplementation(async (path) => {
-        const data = uploadedData.get(path);
-        if (data) {
-          return JSON.stringify(data);
-        }
-        return JSON.stringify(observation);
-      }),
+  const processorDeps: ObservationEvalProcessorDeps = {
+    downloadObservationFromS3: vi.fn().mockImplementation(async (path) => {
+      const data = uploadedData.get(path);
+      if (data) {
+        return JSON.stringify(data);
+      }
+      return JSON.stringify(observation);
+    }),
   };
 
   const executionDeps: EvalExecutionDeps = createMockEvalExecutionDeps({

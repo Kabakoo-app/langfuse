@@ -5,7 +5,7 @@ import {
   protectedProjectProcedure,
 } from "@/src/server/api/trpc";
 import { TRPCError } from "@trpc/server";
-import * as z from "zod";
+import * as z from "zod/v4";
 import {
   hasOrganizationAccess,
   throwIfNoOrganizationAccess,
@@ -284,61 +284,48 @@ export const membersRouter = createTRPCRouter({
           currentUsage: currentMemberCount + pendingInviteCount,
         });
 
-        // Create a MembershipInvitation so the user appears in the Invites tab
-        // (and the copy-link button is available). The invitation is processed
-        // automatically the next time the user signs in.
-        try {
-          const invitation = await ctx.prisma.membershipInvitation.create({
+        // create org membership as user is not a member yet
+        const orgMembership = await ctx.prisma.organizationMembership.create({
+          data: {
+            userId: user.id,
+            orgId: input.orgId,
+            role: input.orgRole,
+          },
+        });
+        await auditLog({
+          session: ctx.session,
+          resourceType: "orgMembership",
+          resourceId: orgMembership.id,
+          action: "create",
+          after: orgMembership,
+        });
+        if (project && input.projectRole && input.projectRole !== Role.NONE) {
+          const projectMembership = await ctx.prisma.projectMembership.create({
             data: {
-              orgId: input.orgId,
-              projectId:
-                project && input.projectRole && input.projectRole !== Role.NONE
-                  ? project.id
-                  : null,
-              email: input.email.toLowerCase(),
-              orgRole: input.orgRole,
-              projectRole:
-                input.projectRole &&
-                input.projectRole !== Role.NONE &&
-                project
-                  ? input.projectRole
-                  : null,
-              invitedByUserId: ctx.session.user.id,
+              userId: user.id,
+              projectId: project.id,
+              role: input.projectRole,
+              orgMembershipId: orgMembership.id,
             },
           });
-
           await auditLog({
             session: ctx.session,
-            resourceType: "membershipInvitation",
-            resourceId: invitation.id,
+            resourceType: "projectMembership",
+            resourceId:
+              projectMembership.projectId + "--" + projectMembership.userId,
             action: "create",
-            after: invitation,
+            after: projectMembership,
           });
-          await sendMembershipInvitationEmail({
-            inviterEmail: ctx.session.user.email!,
-            inviterName: ctx.session.user.name!,
-            to: input.email,
-            orgName: org.name,
-            orgId: input.orgId,
-            userExists: true,
-            env: env,
-          });
-
-          return invitation;
-        } catch (error) {
-          if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002"
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "A pending membership invitation with this email and organization already exists",
-            });
-          } else {
-            throw error;
-          }
         }
+        await sendMembershipInvitationEmail({
+          inviterEmail: ctx.session.user.email!,
+          inviterName: ctx.session.user.name!,
+          to: input.email,
+          orgName: org.name,
+          orgId: input.orgId,
+          userExists: true,
+          env: env,
+        });
       } else {
         // Check member limit before creating invitation
         throwIfExceedsLimit({
@@ -475,55 +462,6 @@ export const membersRouter = createTRPCRouter({
         },
       });
     }),
-  deleteUser: protectedOrganizationProcedure
-    .input(
-      z.object({
-        orgId: z.string(),
-        userId: z.string(),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      throwIfNoOrganizationAccess({
-        session: ctx.session,
-        organizationId: input.orgId,
-        scope: "organizationMembers:CUD",
-      });
-
-      if (input.userId === ctx.session.user.id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot delete your own account from here.",
-        });
-      }
-
-      const user = await ctx.prisma.user.findUnique({
-        where: { id: input.userId },
-        include: {
-          organizationMemberships: {
-            where: { orgId: input.orgId },
-          },
-        },
-      });
-      if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-
-      const membership = user.organizationMemberships[0];
-      if (membership) {
-        throwIfHigherRole({
-          ownRole: ctx.session.orgRole,
-          role: membership.role,
-        });
-      }
-
-      await auditLog({
-        session: ctx.session,
-        resourceType: "orgMembership",
-        resourceId: input.userId,
-        action: "delete",
-        before: user,
-      });
-
-      await ctx.prisma.user.delete({ where: { id: input.userId } });
-    }),
   deleteInvite: protectedOrganizationProcedure
     .input(
       z.object({
@@ -634,7 +572,15 @@ export const membersRouter = createTRPCRouter({
         });
       }
 
-      const updatedMembership = await ctx.prisma.organizationMembership.update({
+      await auditLog({
+        session: ctx.session,
+        resourceType: "orgMembership",
+        resourceId: membership.id,
+        action: "update",
+        before: membership,
+      });
+
+      return await ctx.prisma.organizationMembership.update({
         where: {
           id: membership.id,
           orgId: input.orgId,
@@ -643,17 +589,6 @@ export const membersRouter = createTRPCRouter({
           role: input.role,
         },
       });
-
-      await auditLog({
-        session: ctx.session,
-        resourceType: "orgMembership",
-        resourceId: membership.id,
-        action: "update",
-        before: membership,
-        after: updatedMembership,
-      });
-
-      return updatedMembership;
     }),
   updateProjectRole: protectedOrganizationProcedure
     .input(
@@ -740,7 +675,7 @@ export const membersRouter = createTRPCRouter({
           await auditLog({
             session: ctx.session,
             resourceType: "projectMembership",
-            resourceId: `${input.projectId}--${input.userId}`,
+            resourceId: `${input.orgMembershipId}--${input.projectId}`,
             action: "delete",
             before: projectMembership,
           });
@@ -781,10 +716,9 @@ export const membersRouter = createTRPCRouter({
       await auditLog({
         session: ctx.session,
         resourceType: "projectMembership",
-        resourceId: `${input.projectId}--${input.userId}`,
-        action: projectMembership ? "update" : "create",
+        resourceId: input.projectId + "--" + input.userId,
+        action: "update",
         before: projectMembership,
-        after: updatedProjectMembership,
       });
 
       return updatedProjectMembership;
@@ -844,48 +778,6 @@ export const membersRouter = createTRPCRouter({
           email: user.email,
         })),
         totalCount,
-      };
-    }),
-  allUsersAdmin: protectedOrganizationProcedure
-    .input(z.object({ orgId: z.string() }))
-    .query(async ({ input, ctx }) => {
-      throwIfNoOrganizationAccess({
-        session: ctx.session,
-        organizationId: input.orgId,
-        scope: "organizationMembers:CUD",
-      });
-
-      const users = await ctx.prisma.user.findMany({
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          image: true,
-          createdAt: true,
-          organizationMemberships: {
-            select: {
-              id: true,
-              role: true,
-              orgId: true,
-            },
-          },
-        },
-        orderBy: { email: "asc" },
-      });
-
-      return {
-        users: users.map((u) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          image: u.image,
-          createdAt: u.createdAt,
-          organizationMemberships: u.organizationMemberships.map((m) => ({
-            id: m.id,
-            role: m.role,
-            orgId: m.orgId,
-          })),
-        })),
       };
     }),
 });

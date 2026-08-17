@@ -26,7 +26,7 @@ import { type User } from "next-auth";
 import { type OrganizationScope } from "@/src/features/rbac/constants/organizationAccessRights";
 import { SupportButton } from "@/src/components/nav/support-button";
 import { BookACallButton } from "@/src/components/nav/book-a-call-button";
-import { V4SidebarToggle } from "@/src/features/events/components/V4SidebarToggle";
+import { V4BetaSidebarToggle } from "@/src/features/events/components/V4BetaSidebarToggle";
 import { SidebarMenuButton } from "@/src/components/ui/sidebar";
 import { useCommandMenu } from "@/src/features/command-k-menu/CommandMenuProvider";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
@@ -178,7 +178,6 @@ export const ROUTES: Route[] = [
     featureFlag: "experimentsV4Enabled",
     group: RouteGroup.Evaluation,
     section: RouteSection.Main,
-    label: "Beta",
   },
   {
     title: "Upgrade",
@@ -209,7 +208,7 @@ export const ROUTES: Route[] = [
     pathname: "",
     section: RouteSection.Secondary,
     featureFlag: "v4BetaToggleVisible",
-    menuNode: <V4SidebarToggle />,
+    menuNode: <V4BetaSidebarToggle />,
   },
   {
     title: "Settings",

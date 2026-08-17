@@ -11,34 +11,14 @@ import {
 // Mock data for testing
 const mockColumns = [
   { id: "name", enableSorting: true, accessorKey: "name" },
-  { id: "traceName", enableSorting: true, accessorKey: "traceName" },
   { id: "status", enableSorting: true, accessorKey: "status" },
   { id: "age", enableSorting: false, accessorKey: "age" },
 ];
 
-const mockTraceTableColumns = [
-  { id: "name", enableSorting: true, accessorKey: "name" },
-  { id: "status", enableSorting: true, accessorKey: "status" },
-];
-
 const mockFilterDefinitions: ColumnDefinition[] = [
-  {
-    id: "traceName",
-    name: "Name",
-    type: "string",
-    internal: "name",
-    aliases: ["name"],
-  },
+  { id: "name", name: "name", type: "string", internal: "name" },
   { id: "status", name: "status", type: "string", internal: "status" },
   { id: "city", name: "city", type: "string", internal: "city" },
-  {
-    id: "traceTags",
-    name: "Tags",
-    type: "arrayOptions",
-    internal: "tags",
-    options: [],
-    aliases: ["tags"],
-  },
 ];
 
 describe("table view presets validation functions", () => {
@@ -54,16 +34,6 @@ describe("table view presets validation functions", () => {
     it("should return orderBy if column exists and supports sorting", () => {
       const orderBy: OrderByState = { column: "name", order: "ASC" };
       expect(validateOrderBy(orderBy, mockColumns)).toEqual(orderBy);
-    });
-
-    it("should normalize legacy orderBy columns via aliases", () => {
-      const orderBy: OrderByState = { column: "traceName", order: "ASC" };
-      expect(
-        validateOrderBy(orderBy, mockTraceTableColumns, mockFilterDefinitions),
-      ).toEqual({
-        column: "name",
-        order: "ASC",
-      });
     });
 
     it("should return null if column does not exist", () => {
@@ -110,7 +80,7 @@ describe("table view presets validation functions", () => {
         {
           type: "string",
           value: "John",
-          column: "traceName",
+          column: "name",
           operator: "=",
         },
       ];
@@ -122,7 +92,7 @@ describe("table view presets validation functions", () => {
         {
           type: "string",
           value: "John",
-          column: "traceName",
+          column: "name",
           operator: "=",
         },
         {
@@ -133,38 +103,6 @@ describe("table view presets validation functions", () => {
         },
       ];
       expect(validateFilters(filters, mockFilterDefinitions)).toEqual(filters);
-    });
-
-    it("should normalize legacy aliases to canonical trace filter ids", () => {
-      const filters: FilterState = [
-        {
-          type: "string",
-          value: "John",
-          column: "name",
-          operator: "=",
-        },
-        {
-          type: "arrayOptions",
-          value: ["prod"],
-          column: "tags",
-          operator: "any of",
-        },
-      ];
-
-      expect(validateFilters(filters, mockFilterDefinitions)).toEqual([
-        {
-          type: "string",
-          value: "John",
-          column: "traceName",
-          operator: "=",
-        },
-        {
-          type: "arrayOptions",
-          value: ["prod"],
-          column: "traceTags",
-          operator: "any of",
-        },
-      ]);
     });
 
     it("should return empty array if no filters are valid", () => {

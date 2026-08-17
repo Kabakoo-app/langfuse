@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { aggregateScores } from "@/src/features/scores/lib/aggregateScores";
@@ -22,9 +22,8 @@ import {
   type Observation,
   TracingSearchType,
   type ScoreDomain,
-  ScoreDataTypeArray,
+  AGGREGATABLE_SCORE_TYPES,
   ScoreDataTypeEnum,
-  LISTABLE_SCORE_TYPES,
 } from "@langfuse/shared";
 import {
   traceException,
@@ -63,7 +62,6 @@ import {
   toDomainWithStringifiedMetadata,
   toDomainArrayWithStringifiedMetadata,
 } from "@/src/utils/clientSideDomainTypes";
-import { scoreFilters } from "@/src/features/scores/lib/scoreColumns";
 import partition from "lodash/partition";
 
 const TraceFilterOptions = z.object({
@@ -82,8 +80,6 @@ export type ObservationReturnTypeWithMetadata = Omit<
 > & {
   traceId: string;
   metadata: string | null;
-  traceName?: string | null;
-  traceTags?: string[];
   // optional, because in v4 an observation can have those properties
   userId?: string | null;
   sessionId?: string | null;
@@ -247,7 +243,7 @@ export const traceRouter = createTRPCRouter({
 
       const validatedScores = filterAndValidateDbScoreList({
         scores: traceScores,
-        dataTypes: LISTABLE_SCORE_TYPES,
+        dataTypes: AGGREGATABLE_SCORE_TYPES,
         includeHasMetadata: true,
         onParseError: traceException,
       });
@@ -268,13 +264,6 @@ export const traceRouter = createTRPCRouter({
     )
     .query(async ({ input }) => {
       const { timestampFilter } = input;
-      // Trace table filters/columns operate on trace-scoped aggregates: any
-      // score row attached to the trace, whether it lives on the trace itself
-      // or on one of the trace's observations.
-      const traceScopedScoreFilters = [
-        ...(timestampFilter ?? []),
-        ...scoreFilters.forTraceScopedAggregates(),
-      ];
 
       const [
         numericScoreNames,
@@ -284,10 +273,10 @@ export const traceRouter = createTRPCRouter({
         userIds,
         sessionIds,
       ] = await Promise.all([
-        getNumericScoresGroupedByName(input.projectId, traceScopedScoreFilters),
+        getNumericScoresGroupedByName(input.projectId, timestampFilter ?? []),
         getCategoricalScoresGroupedByName(
           input.projectId,
-          traceScopedScoreFilters,
+          timestampFilter ?? [],
         ),
         getTracesGroupedByName(
           input.projectId,
@@ -382,7 +371,7 @@ export const traceRouter = createTRPCRouter({
 
       const validatedScores = filterAndValidateDbScoreList({
         scores: traceScores,
-        dataTypes: [...ScoreDataTypeArray],
+        dataTypes: [...AGGREGATABLE_SCORE_TYPES, ScoreDataTypeEnum.CORRECTION],
         onParseError: traceException,
       });
 
@@ -591,6 +580,53 @@ export const traceRouter = createTRPCRouter({
         });
       }
     }),
+  updateTags: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        traceId: z.string(),
+        tags: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "objects:tag",
+      });
+      try {
+        await auditLog({
+          session: ctx.session,
+          resourceType: "trace",
+          resourceId: input.traceId,
+          action: "updateTags",
+          after: input.tags,
+        });
+
+        const clickhouseTrace = await getTraceById({
+          traceId: input.traceId,
+          projectId: input.projectId,
+          clickhouseFeatureTag: "tracing-trpc",
+        });
+        if (!clickhouseTrace) {
+          logger.error(
+            `Trace not found in Clickhouse: ${input.traceId}. Skipping tag update.`,
+          );
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Trace not found",
+          });
+        }
+        clickhouseTrace.tags = input.tags;
+        await upsertTrace(convertTraceDomainToClickhouse(clickhouseTrace));
+      } catch (error) {
+        logger.error("Failed to call traces.updateTags", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+        });
+      }
+    }),
+
   getAgentGraphData: protectedGetTraceProcedure
     .input(
       z.object({

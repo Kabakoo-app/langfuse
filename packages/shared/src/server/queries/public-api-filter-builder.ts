@@ -9,7 +9,7 @@ import {
   NumberFilter,
   type ClickhouseOperator,
 } from "./clickhouse-sql/clickhouse-filter";
-import { z } from "zod";
+import { z } from "zod/v4";
 import type { FilterState } from "../../types";
 import type {
   UiColumnMappings,

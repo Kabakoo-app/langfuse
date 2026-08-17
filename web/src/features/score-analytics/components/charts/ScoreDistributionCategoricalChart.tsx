@@ -1,8 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
-import { Bar, BarChart, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, XAxis, YAxis, Legend } from "recharts";
 import {
   ChartContainer,
-  ChartLegend,
   ChartTooltip,
   type ChartConfig,
 } from "@/src/components/ui/chart";
@@ -285,7 +284,7 @@ export function ScoreDistributionCategoricalChart({
           />
         )}
 
-        <ChartLegend
+        <Legend
           content={
             <ScoreChartLegendContent
               interactive={hasStackedData}

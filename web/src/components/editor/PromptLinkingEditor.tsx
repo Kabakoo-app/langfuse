@@ -54,7 +54,7 @@ export function PromptLinkingEditor({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative">
       <CodeMirrorEditor
         value={value}
         onChange={onChange}
@@ -64,17 +64,15 @@ export function PromptLinkingEditor({
         className={className}
         editorRef={editorRef}
       />
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          className="flex items-center gap-1 px-2 py-1"
-          onClick={() => setIsDialogOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          <span className="text-xs">Add prompt reference</span>
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="absolute right-2 bottom-2 flex items-center gap-1 px-2 py-1"
+        onClick={() => setIsDialogOpen(true)}
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        <span className="text-xs">Add prompt reference</span>
+      </Button>
 
       {projectId && (
         <PromptSelectionDialog

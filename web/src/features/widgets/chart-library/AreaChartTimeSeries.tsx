@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import {
-  ChartActiveReferenceLine,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -98,7 +97,6 @@ export const AreaChartTimeSeries: React.FC<ChartProps> = ({
             fontSize={12}
             tickLine={false}
             axisLine={false}
-            niceTicks="auto"
             tickFormatter={(value) => tooltipFormatter(Number(value))}
           />
           {dimensions.map((dimension, index) => {
@@ -119,7 +117,6 @@ export const AreaChartTimeSeries: React.FC<ChartProps> = ({
               />
             );
           })}
-          <ChartActiveReferenceLine />
           <ChartTooltip
             contentStyle={{ backgroundColor: "hsl(var(--background))" }}
             content={({ active, payload, label }) => (
@@ -127,7 +124,6 @@ export const AreaChartTimeSeries: React.FC<ChartProps> = ({
                 active={active}
                 payload={payload}
                 label={label}
-                indicator="line"
                 valueFormatter={tooltipFormatter}
                 sortPayloadByValue="desc"
               />

@@ -1,7 +1,6 @@
 import { type NextApiRequest, type NextApiResponse } from "next";
 import {
   SlackService,
-  SLACK_BOT_SCOPES,
   parseSlackInstallationMetadata,
 } from "@langfuse/shared/src/server";
 import { logger } from "@langfuse/shared/src/server";
@@ -31,7 +30,7 @@ export async function handleInstallPath(
     // 2. Set session cookies for state validation
     // 3. Render the installation page with "Add to Slack" button
     const installOptions = {
-      scopes: [...SLACK_BOT_SCOPES],
+      scopes: ["channels:read", "chat:write", "chat:write.public"],
       metadata: JSON.stringify({ projectId: projectId }),
       redirectUri: `${env.NEXTAUTH_URL}/api/public/slack/oauth`,
     };

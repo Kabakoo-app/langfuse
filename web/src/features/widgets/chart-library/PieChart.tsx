@@ -4,13 +4,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/src/components/ui/chart";
-import {
-  Label,
-  Pie,
-  PieChart as PieChartComponent,
-  Sector,
-  type PieSectorShapeProps,
-} from "recharts";
+import { Cell, Label, Pie, PieChart as PieChartComponent } from "recharts";
 import { type ChartProps } from "@/src/features/widgets/chart-library/chart-props";
 import { compactNumberFormatter, numberFormatter } from "@/src/utils/numbers";
 
@@ -48,24 +42,6 @@ export const PieChart: React.FC<ChartProps> = ({
     }));
   }, [data]);
 
-  const renderSector = (props: PieSectorShapeProps) => {
-    const outerRadius =
-      typeof props.outerRadius === "number" ? props.outerRadius : 0;
-    const expandedOuterRadius = props.isActive ? outerRadius + 10 : outerRadius;
-
-    return (
-      <Sector
-        {...props}
-        outerRadius={expandedOuterRadius}
-        opacity={
-          subtleFill ? (props.isActive ? 0.9 : 0.45) : props.isActive ? 1 : 0.82
-        }
-        stroke="hsl(var(--background))"
-        strokeWidth={props.isActive ? 4 : 3}
-      />
-    );
-  };
-
   return (
     <ChartContainer config={config}>
       <PieChartComponent accessibilityLayer={accessibilityLayer}>
@@ -90,8 +66,14 @@ export const PieChart: React.FC<ChartProps> = ({
           outerRadius={120}
           paddingAngle={2}
           strokeWidth={5}
-          shape={renderSector}
         >
+          {chartData.map((entry) => (
+            <Cell
+              key={entry.name}
+              fill={entry.fill}
+              fillOpacity={subtleFill ? 0.3 : 1}
+            />
+          ))}
           {/* Label in the center of the donut */}
           {data.length > 0 && (
             <Label

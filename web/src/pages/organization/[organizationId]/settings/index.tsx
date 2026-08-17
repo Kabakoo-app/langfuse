@@ -1,6 +1,7 @@
 import { PagedSettingsContainer } from "@/src/components/PagedSettingsContainer";
 import Header from "@/src/components/layouts/header";
-import { MembersManagementPage } from "@/src/features/rbac/components/MembersManagementPage";
+import { MembershipInvitesPage } from "@/src/features/rbac/components/MembershipInvitesPage";
+import { MembersTable } from "@/src/features/rbac/components/MembersTable";
 import { JSONView } from "@/src/components/ui/CodeJsonViewer";
 import RenameOrganization from "@/src/features/organizations/components/RenameOrganization";
 import { useQueryOrganization } from "@/src/features/organizations/hooks";
@@ -34,6 +35,7 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
   const plan = usePlan();
   const isLangfuseCloud = isCloudPlan(plan) ?? false;
   const isCloudBillingAvailable = useIsCloudBillingAvailable();
+
   if (!organization) return [];
 
   return getOrganizationSettingsPages({
@@ -106,8 +108,18 @@ export const getOrganizationSettingsPages = ({
   {
     title: "Members",
     slug: "members",
-    cmdKKeywords: ["invite", "user", "rbac", "delete", "remove", "access"],
-    content: <MembersManagementPage orgId={organization.id} />,
+    cmdKKeywords: ["invite", "user", "rbac"],
+    content: (
+      <div className="flex flex-col gap-6">
+        <div>
+          <Header title="Organization Members" />
+          <MembersTable orgId={organization.id} />
+        </div>
+        <div>
+          <MembershipInvitesPage orgId={organization.id} />
+        </div>
+      </div>
+    ),
   },
   {
     title: "Audit Logs",

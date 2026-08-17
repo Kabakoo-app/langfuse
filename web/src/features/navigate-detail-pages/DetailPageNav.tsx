@@ -12,42 +12,25 @@ import {
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useRouter } from "next/router";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 
 export const DetailPageNav = (props: {
   currentId: string;
   path: (entry: ListEntry) => string;
   listKey: string;
-  onNavigate?: (entry: ListEntry) => void;
 }) => {
-  const { currentId, path, listKey, onNavigate } = props;
   const { detailPagelists } = useDetailPageLists();
-  const entries = detailPagelists[listKey] ?? [];
+  const entries = detailPagelists[props.listKey] ?? [];
 
   const capture = usePostHogClientCapture();
   const router = useRouter();
-  const currentIndex = entries.findIndex((entry) => entry.id === currentId);
+  const currentIndex = entries.findIndex(
+    (entry) => entry.id === props.currentId,
+  );
   const previousPageEntry =
     currentIndex > 0 ? entries[currentIndex - 1] : undefined;
   const nextPageEntry =
     currentIndex < entries.length - 1 ? entries[currentIndex + 1] : undefined;
-
-  const navigateToEntry = useCallback(
-    (entry: ListEntry) => {
-      if (onNavigate) {
-        onNavigate(entry);
-        return;
-      }
-
-      void router.push(
-        path({
-          id: encodeURIComponent(entry.id),
-          params: entry.params,
-        }),
-      );
-    },
-    [onNavigate, path, router],
-  );
 
   // keyboard shortcuts for buttons k and j
   useEffect(() => {
@@ -67,14 +50,22 @@ export const DetailPageNav = (props: {
       }
 
       if (event.key === "k" && previousPageEntry) {
-        navigateToEntry(previousPageEntry);
+        const newPath = props.path({
+          id: encodeURIComponent(previousPageEntry.id),
+          params: previousPageEntry.params,
+        });
+        void router.push(newPath);
       } else if (event.key === "j" && nextPageEntry) {
-        navigateToEntry(nextPageEntry);
+        const newPath = props.path({
+          id: encodeURIComponent(nextPageEntry.id),
+          params: nextPageEntry.params,
+        });
+        void router.push(newPath);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previousPageEntry, nextPageEntry, navigateToEntry]);
+  }, [previousPageEntry, nextPageEntry, router, props]);
 
   if (entries.length > 1)
     return (
@@ -89,7 +80,12 @@ export const DetailPageNav = (props: {
               onClick={() => {
                 if (previousPageEntry) {
                   capture("navigate_detail_pages:button_click_prev_or_next");
-                  navigateToEntry(previousPageEntry);
+                  void router.push(
+                    props.path({
+                      id: encodeURIComponent(previousPageEntry.id),
+                      params: previousPageEntry.params,
+                    }),
+                  );
                 }
               }}
             >
@@ -117,7 +113,12 @@ export const DetailPageNav = (props: {
               onClick={() => {
                 if (nextPageEntry) {
                   capture("navigate_detail_pages:button_click_prev_or_next");
-                  navigateToEntry(nextPageEntry);
+                  void router.push(
+                    props.path({
+                      id: encodeURIComponent(nextPageEntry.id),
+                      params: nextPageEntry.params,
+                    }),
+                  );
                 }
               }}
             >

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // Sentinel value for Bedrock default credential provider chain
 export const BEDROCK_USE_DEFAULT_CREDENTIALS =
@@ -11,25 +11,12 @@ export const VERTEXAI_USE_DEFAULT_CREDENTIALS =
 export const BedrockConfigSchema = z.object({ region: z.string() });
 export type BedrockConfig = z.infer<typeof BedrockConfigSchema>;
 
-export const BedrockAccessKeysSchema = z
+export const BedrockCredentialSchema = z
   .object({
-    accessKeyId: z.string().min(1),
-    secretAccessKey: z.string().min(1),
+    accessKeyId: z.string(),
+    secretAccessKey: z.string(),
   })
-  .strict();
-export type BedrockAccessKeys = z.infer<typeof BedrockAccessKeysSchema>;
-
-export const BedrockApiKeySchema = z
-  .object({
-    apiKey: z.string().min(1),
-  })
-  .strict();
-export type BedrockApiKey = z.infer<typeof BedrockApiKeySchema>;
-
-export const BedrockCredentialSchema = z.union([
-  BedrockAccessKeysSchema,
-  BedrockApiKeySchema,
-]);
+  .optional();
 export type BedrockCredential = z.infer<typeof BedrockCredentialSchema>;
 
 export const VertexAIConfigSchema = z

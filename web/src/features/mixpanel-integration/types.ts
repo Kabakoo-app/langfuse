@@ -1,5 +1,5 @@
 import { AnalyticsIntegrationExportSource } from "@langfuse/shared";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const MIXPANEL_REGIONS = [
   {

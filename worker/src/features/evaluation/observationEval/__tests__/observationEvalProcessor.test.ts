@@ -187,7 +187,7 @@ describe("processObservationEval", () => {
 
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
+          .fn()
           .mockRejectedValue(new Error("S3 connection failed")),
       };
 
@@ -214,7 +214,7 @@ describe("processObservationEval", () => {
 
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
+          .fn()
           .mockResolvedValue("not valid json {"),
       };
 
@@ -243,7 +243,7 @@ describe("processObservationEval", () => {
       const invalidObservation = { id: "obs-123", someField: "value" };
       const deps: ObservationEvalProcessorDeps = {
         downloadObservationFromS3: vi
-          .fn<ObservationEvalProcessorDeps["downloadObservationFromS3"]>()
+          .fn()
           .mockResolvedValue(JSON.stringify(invalidObservation)),
       };
 

@@ -22,10 +22,7 @@ export function normalizeFilterColumnNames(
 ): FilterState {
   return filters.map((filter) => {
     const colDef = columnDefinitions.find(
-      (c) =>
-        c.id === filter.column ||
-        c.name === filter.column ||
-        c.aliases?.includes(filter.column),
+      (c) => c.id === filter.column || c.name === filter.column,
     );
     if (colDef && colDef.id !== filter.column) {
       return { ...filter, column: colDef.id };

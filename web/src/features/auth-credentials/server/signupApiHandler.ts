@@ -5,6 +5,7 @@ import { getSsoAuthProviderIdForDomain } from "@/src/ee/features/multi-tenant-ss
 import { ENTERPRISE_SSO_REQUIRED_MESSAGE } from "@/src/features/auth/constants";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { logger } from "@langfuse/shared/src/server";
+import { prisma } from "@langfuse/shared/src/db";
 
 export function getSSOBlockedDomains() {
   return (
@@ -23,14 +24,7 @@ export async function signupApiHandler(
   res: NextApiResponse,
 ) {
   if (req.method !== "POST") return;
-  // Block if disabled by env
-  if (
-    env.NEXT_PUBLIC_SIGN_UP_DISABLED === "true" ||
-    env.AUTH_DISABLE_SIGNUP === "true"
-  ) {
-    res.status(422).json({ message: "Sign up is disabled." });
-    return;
-  }
+
   if (env.AUTH_DISABLE_USERNAME_PASSWORD === "true") {
     res.status(422).json({
       message:
@@ -48,6 +42,20 @@ export async function signupApiHandler(
   }
 
   const body = validBody.data;
+
+  // Block if signup disabled by env, unless this email has a pending invitation
+  if (
+    env.NEXT_PUBLIC_SIGN_UP_DISABLED === "true" ||
+    env.AUTH_DISABLE_SIGNUP === "true"
+  ) {
+    const invitation = await prisma.membershipInvitation.findFirst({
+      where: { email: body.email.toLowerCase() },
+    });
+    if (!invitation) {
+      res.status(422).json({ message: "Sign up is disabled." });
+      return;
+    }
+  }
 
   // check if email domain is blocked from email/password sign up via env
   const blockedDomains = getSSOBlockedDomains();
